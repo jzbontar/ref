@@ -3,7 +3,6 @@ import re
 import time
 import shutil
 import itertools
-import operator
 from subprocess import Popen, PIPE
 
 import meta
@@ -48,16 +47,17 @@ def extract_title(fname):
     font_size = {id: int(size) for id, size in fontspec}
 
     chunks = []
-    for font, text in re.findall(r'font="(\d+)">(.*?)</text>', xml):
-        chunks.append((font, extern.striptags(text).strip()))
+    for id, text in re.findall(r'font="(\d+)">(.*?)</text>', xml):
+        chunks.append((font_size[id], id, extern.striptags(text).strip()))
 
     groups = []
-    for font, group in itertools.groupby(chunks, operator.itemgetter(0)):
-        text_size = font_size[font] + text.startswith('<b>') * 0.5
+    for size_id, group in itertools.groupby(chunks, lambda xs: xs[:2]):
+        size, id = size_id
+        text_size = size + text.startswith('<b>') * 0.5
         groups.append((text_size, list(group)))
 
-    for _, group in sorted(groups, key=operator.itemgetter(0), reverse=True):
-        title = ' '.join(map(operator.itemgetter(1), group)).strip()
+    for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
+        title = ' '.join(map(lambda xs: xs[2], group)).strip()
         bad = ('abstract', 'introduction', 'relatedwork')
         if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
             return title
