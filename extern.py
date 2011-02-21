@@ -2,6 +2,7 @@ import re
 import html
 import os
 import urllib.request
+import html.entities
 
 
 BASE_DIR = os.path.expanduser('~/.library/')
@@ -49,11 +50,22 @@ def unescape(data):
 
 
 def urlread(url):
+    if 'http://scholar.google' in url:
+        scholar_cookies()
     return unescape(opener.open(url).read().decode('utf8'))
 
 
-opener = urllib.request.build_opener()
+def scholar_cookies():
+    if not opener.has_scolar_cookies:
+        opener.has_scolar_cookies = True
+        setprefs = urlread('http://scholar.google.com/scholar_setprefs')
+        scisig = re.search(r'scisig value="([^"]+)', setprefs).group(1)
+        url = 'http://scholar.google.com/scholar_setprefs?scisig={}&scis=yes&scisf=4&submit'
+        opener.open(url.format(scisig))
+
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor())
 opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+opener.has_scolar_cookies = False
 
 for dir in (BASE_DIR, DOCUMENT_DIR):
     if not os.path.exists(dir):

@@ -3,6 +3,7 @@ import re
 import time
 import shutil
 import itertools
+import time
 from subprocess import Popen, PIPE
 
 import meta
@@ -60,6 +61,7 @@ def extract_title(fname):
         title = ' '.join(map(lambda xs: xs[2], group)).strip()
         bad = ('abstract', 'introduction', 'relatedwork')
         if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
+            title = re.sub(r'\([^)]+\)', '', title)
             return title
 
 
@@ -70,6 +72,9 @@ if __name__ == '__main__':
         if os.path.splitext(base)[1] == '.pdf':
             fname = os.path.join(dir, base)
             print(base)
-            print(extract_title(fname))
+
+            title = extract_title(fname)
+            print(title)
+            #print(meta.fetch(title))
             #print(Document.from_pdf(fname))
             print()
