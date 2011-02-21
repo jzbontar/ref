@@ -2,6 +2,7 @@ import os
 import re
 import time
 import shutil
+import itertools
 from subprocess import Popen, PIPE
 
 import meta
@@ -40,20 +41,21 @@ def extract_title(fname):
     xml = Popen(cmd, stdout=PIPE).communicate()[0].decode('utf8')
 
     fonts = re.findall(r'<fontspec id="(\d+)" size="(\d+)"', xml)
-    if not fonts:
-        return ''
-    max_size = max(fonts, key=lambda xs: int(xs[1]))[1]
-    fonts = {id for id, size in fonts if size == max_size}
+    cmp_fonts = lambda id_size: int(id_size[1])
+    fonts.sort(key=cmp_fonts, reverse=True)
+    for size, font_group in itertools.groupby(fonts, cmp_fonts):
+        font_group = {id for id, _ in font_group}
 
-    title = ''
-    for font, text in re.findall(r'font="(\d+)">(.*?)</text>', xml):
-        text = extern.striptags(text)
-        if font in fonts and len(text) >= 5:
-            title += text
-        elif title:
-            break
+        title = ''
+        for font, text in re.findall(r'font="(\d+)">(.*?)</text>', xml):
+            text = extern.striptags(text)
+            if font in font_group and len(title + text) >= 5:
+                title += text
+            elif title:
+                break
 
-    return extern.striptags(title)
+        if title:
+            return extern.striptags(title)
 
 
 if __name__ == '__main__':
@@ -63,5 +65,6 @@ if __name__ == '__main__':
         if os.path.splitext(base)[1] == '.pdf':
             fname = os.path.join(dir, base)
             print(base)
-            print(Document.from_pdf(fname))
+            print(extract_title(fname))
+            #print(Document.from_pdf(fname))
             print()
