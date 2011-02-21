@@ -3,6 +3,7 @@ import re
 import time
 import shutil
 import itertools
+import operator
 from subprocess import Popen, PIPE
 
 import meta
@@ -40,22 +41,26 @@ def extract_title(fname):
     cmd = ['pdftohtml', '-xml', '-stdout', '-l', '1', fname]
     xml = Popen(cmd, stdout=PIPE).communicate()[0].decode('utf8')
 
-    fonts = re.findall(r'<fontspec id="(\d+)" size="(\d+)"', xml)
-    cmp_fonts = lambda id_size: int(id_size[1])
-    fonts.sort(key=cmp_fonts, reverse=True)
-    for size, font_group in itertools.groupby(fonts, cmp_fonts):
-        font_group = {id for id, _ in font_group}
+    # pdftohtml has trouble with the letters 'fi'
+    xml = xml.replace(chr(64257), 'fi')
 
-        title = ''
-        for font, text in re.findall(r'font="(\d+)">(.*?)</text>', xml):
-            text = extern.striptags(text)
-            if font in font_group and len(title + text) >= 5:
-                title += text
-            elif title:
-                break
+    fontspec = re.findall(r'<fontspec id="(\d+)" size="(-?\d+)"', xml)
+    font_size = {id: int(size) for id, size in fontspec}
 
-        if title:
-            return extern.striptags(title)
+    chunks = []
+    for font, text in re.findall(r'font="(\d+)">(.*?)</text>', xml):
+        chunks.append((font, extern.striptags(text).strip()))
+
+    groups = []
+    for font, group in itertools.groupby(chunks, operator.itemgetter(0)):
+        text_size = font_size[font] + text.startswith('<b>') * 0.5
+        groups.append((text_size, list(group)))
+
+    for _, group in sorted(groups, key=operator.itemgetter(0), reverse=True):
+        title = ' '.join(map(operator.itemgetter(1), group)).strip()
+        bad = ('abstract', 'introduction', 'relatedwork')
+        if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
+            return title
 
 
 if __name__ == '__main__':
