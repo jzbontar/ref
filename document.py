@@ -7,13 +7,12 @@ import sys
 import time
 import urllib
 import urllib2
-
-import extern
+import htmlentitydefs
 
 
 def extract_title(fname):
     cmd = ['pdftohtml', '-xml', '-stdout', '-l', '1', fname]
-    xml = Popen(cmd, stdout=PIPE).communicate()[0].decode()
+    xml = Popen(cmd, stdout=PIPE).communicate()[0].decode('utf8')
 
     # pdftohtml has trouble with the letters 'fi'
     xml = xml.replace(unichr(64257), 'fi')
@@ -23,7 +22,7 @@ def extract_title(fname):
 
     chunks = []
     for id, text in re.findall(r'font="([^"]+)">(.*)</text>', xml):
-        chunks.append((font_size[id], id, extern.striptags(text).strip()))
+        chunks.append((font_size[id], id, striptags(text).strip()))
 
     groups = []
     for size_id, group in itertools.groupby(chunks, lambda xs: xs[:2]):
@@ -50,30 +49,39 @@ def fetch_bibtex(title):
 
 
 def scholar_read(url):
-    time.sleep(8)
+    time.sleep(1)
     id = ''.join(random.choice('0123456789abcdef') for i in range(16))
     cookie = 'GSP=ID={}:CF=4;'.format(id)
     h = {'User-agent': 'Mozilla/5.0', 'Cookie': cookie}
     req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return extern.unescape(urllib2.urlopen(req).read().decode())
+    return unescape(urllib2.urlopen(req).read().decode('utf8'))
 
 
-if __name__ == '__main__':
-    sys.exit(0)
-    if 1:
-        extern.cur.execute('drop table if exists documents')
-        extern.cur.execute('create table documents (bibtex text)')
-        print('tables created')
-    
-    dir = '/home/jure/.mendeley'
-    for base in os.listdir(dir):
-        if os.path.splitext(base)[1] == '.pdf':
-            fname = os.path.join(dir, base)
-            print(base)
-            title = extract_title(fname)
-            print(title)
-            bibtex = fetch_bibtex(title)
-            print(bibtex)
+def striptags(html):
+    return re.sub(r'<[^>]+>', '', html)
 
-            if bibtex:
-                extern.cur.execute('insert into documents values (?)', (bibtex,))
+
+def unescape_charref(ref):
+    name = ref[2:-1]
+    base = 10
+    if name.startswith("x"):
+        name = name[1:]
+        base = 16
+    return unichr(int(name, base))
+
+
+def replace_entities(match):
+    ent = match.group()
+    if ent[1] == "#":
+        return unescape_charref(ent)
+
+    repl = htmlentitydefs.name2codepoint.get(ent[1:-1])
+    if repl is not None:
+        repl = unichr(repl)
+    else:
+        repl = ent
+    return repl
+
+
+def unescape(data):
+    return re.sub(r"&#?[A-Za-z0-9]+?;", replace_entities, data)
