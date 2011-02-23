@@ -1,49 +1,78 @@
-import vim
 import sqlite3
+import sys
+import vim
+import re
+
+sys.path.append('/home/jure/devel/library')
+import extern
+
+
+def parse_bibtex(bibtex):
+    reg = r'^\s*(title|author|year)={+(.+?)}+,?$'
+    return dict(re.findall(reg, bibtex, re.MULTILINE))
+
+
+def str_document(id, bibtex):
+    row = parse_bibtex(bibtex)
+    row['id'] = id
+
+    hdr = ('id', 'author', 'title', 'year')
+    return '  '.join(str(row[h])[:col_size[h]].ljust(col_size[h]) for h in hdr)
+
 
 def cursor_moved():
-    global id
+    id = int(vim.current.line.split()[0])
+    cur.execute('SELECT bibtex FROM documents WHERE ROWID=?', (id,))
+    out = cur.fetchone()[0].encode(errors='replace').splitlines()
+    out.extend(['', 'id={}'.format(id)])
+    info_buf[:] = out
 
-    id = vim.current.line
-    if not id:
-        return
-    cur.execute('select data from data where id=?', (id,))
-    res = cur.fetchone()
-    if res:
-        info_buf[0] = str(res[0])
-    else:
-        cur.execute('insert into data (id, data) values (?, "")', (id,))
 
 def write_info():
-    cur.execute('update data set data=? where id=?', (info_buf[0], id))
+    bibtex, info = '\n'.join(info_buf).decode().split('\n\n', 1)
 
-def close():
-    conn.commit()
-    cur.close()
+    info = dict(re.findall(r'(\w+)=(.*)', info))
+    cur.execute('update documents set bibtex=? where ROWID=?', (bibtex, info['id']))
+
+    for i, line in enumerate(main_buf):
+        if line.split()[0] == info['id']:
+            main_buf[i] = str_document(info['id'], bibtex)
+
+
+def reload_main():
+    global col_size
+
+    col_size = {'year': 4, 'id': 3}
+    left = main_win.width - sum(col_size.values()) - 2 * len(col_size) - 2
+    col_size['author'] = int(round(left * 0.2))
+    col_size['title'] = left - col_size['author']
+    cur.execute('select ROWID, bibtex from documents')
+    main_buf[:] = [str_document(*res) for res in cur.fetchall()]
+    
+
 
 c = vim.command
-
-conn = sqlite3.connect('/tmp/data')
-cur = conn.cursor()
-if 0:
-    cur.execute('drop table if exists data')
-    cur.execute('create table data (id text primary key, data text)')
-    for d in [('jure', 'zbontar'), ('minca', 'mramor'), ('rea', 'kolb')]:
-        cur.execute('insert into data values (?, ?)', d)
+cur = extern.conn.cursor()
 
 c('set buftype=nofile')
-c('file info')
-c('new main')
+c('file main')
+main_buf, main_win = vim.current.buffer, vim.current.window
+c('below new tags')
 c('set buftype=nofile')
-info_buf = vim.buffers[0]
-main_buf = vim.buffers[1]
-vim.windows[1].height = 16
+tags_buf, tags_win = vim.current.buffer, vim.current.window
+c('vne info') 
+c('set buftype=nofile')
+info_buf, info_win = vim.current.buffer, vim.current.window
 
-cur.execute('select id from data')
+tags_win.height = 20
+tags_win.width = 30
 
-main_buf[:] = [str(res[0]) for res in cur.fetchall()]
+c(':1winc w')
+reload_main()
  
 c('autocmd CursorMoved main python cursor_moved()')
 c('autocmd BufLeave,VimLeave info python write_info()')
-c('autocmd VimLeave * python close()')
 c('map X :qa!<CR>')
+c('map <c-m> 1<c-w><c-w>')
+c('map <c-i> 2<c-w><c-w>')
+c('map <c-t> 3<c-w><c-w>')
