@@ -10,20 +10,22 @@ import library
 
 
 def search(s):
+    if not s:
+        reload_main()
+        return
     s = '%{}%'.format(s)
-
-    fields = ('title', 'author', 'fulltext')
+    del main_buf[:]
+    fields = ('tags', 'title', 'author', 'fulltext')
     for field in fields:
-        heading = '# {}'.format(field.upper())
-        if field == fields[0]:
-            main_buf[:] = [heading]
-        else:
-            main_buf.append(heading)
         res = library.select_documents(headers, where='{} LIKE ?'.format(field), args=(s,))
-        for doc in res:
-            main_buf.append(str_document(doc))
-        if field != fields[-1]:
-            main_buf.append('')
+        if res:
+            heading = '# {}'.format(field.upper())
+            if len(main_buf) == 1:
+                main_buf[:] = [heading]
+            else:
+                main_buf.append('')
+                main_buf.append(heading)
+            main_buf[len(main_buf):] = map(str_document, res)
 
 
 def parse_info():
@@ -58,7 +60,7 @@ def write_info(doc):
     buf = doc['bibtex'].encode('utf8').splitlines()
     if not buf:
         buf = ['@{', '  title={}', '}']
-    for attr in ('rowid', 'rating', 'filename'):
+    for attr in ('rowid', 'tags', 'rating', 'filename'):
         buf.append('{}={}'.format(attr, encode_val(doc[attr])))
     info_buf[:] = buf
 
@@ -71,7 +73,7 @@ def str_document(doc):
 def selected_document():
     rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
     if rowid:
-        return next(library.select_documents(headers + ['bibtex', 'filename'], rowids=(rowid,)))
+        return library.select_documents(headers + ['bibtex', 'filename', 'tags'], rowids=(rowid,))[0]
     else:
         return None
 
@@ -115,6 +117,22 @@ def open_document():
     Popen(['xdg-open', os.path.join(library.DOCUMENT_DIR, filename)], stderr=PIPE, stdout=PIPE)
 
 
+def add_document(fname):
+    rowid = library.insert_document(fname)
+    doc = library.select_documents(headers, (rowid,))[0]
+    main_buf[:0] = [str_document(doc)]
+
+
+def delete_document():
+    doc = selected_document()
+    library.delete_document(doc)
+
+    for i, line in enumerate(main_buf):
+        id = get_rowid(line)
+        if id == doc['rowid']:
+            del main_buf[i]
+            
+
 c = vim.command
 headers = ['rowid', 'rating', 'author', 'title', 'year']
 
@@ -136,9 +154,12 @@ reload_main()
 c('autocmd CursorMoved main python write_info(selected_document())')
 c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
 c('autocmd VimResized * python resize()')
+c('set cursorline')
 c('map <c-x> :qa!<CR>')
 c('map <c-o> :python open_document()<CR>')
 c('map <c-w>o <NOP>')
 c('map // :Search ')
 c('command Fetch py fetch_bibtex()')
-c('command -nargs=1 Search py search("<args>")')
+c('command -nargs=? Search py search("<args>")')
+c('command -nargs=1 -complete=file Add py add_document("<args>")')
+c('command Delete py delete_document()')

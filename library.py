@@ -2,7 +2,6 @@ from subprocess import Popen, PIPE
 import collections
 import filecmp
 import htmlentitydefs
-import itertools
 import os
 import random
 import re
@@ -18,17 +17,27 @@ BASE_DIR = os.path.expanduser('~/.library/')
 DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
 
 
+def create_test_data():
+    import string
+
+    def rs(n):
+        return ''.join(random.choice(string.printable) for _ in range(n))
+
+    # TODO
+
+def import_mendeley():
+    dir = u'/home/jure/.mendeley'
+    for base in os.listdir(dir):
+        insert_document(os.path.join(dir, base))
+
+
 def create_tables():
     con.execute('DROP TABLE IF EXISTS documents')
     con.execute('''CREATE TABLE documents 
         (bibtex TEXT, author TEXT, title TEXT, year INTEGER, rating INTEGER, 
-        filename TEXT, fulltext TEXT, 
+        filename TEXT, fulltext TEXT, tags TEXT,
         added TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
-    con.execute('DROP TABLE IF EXISTS tags')
-    con.execute('CREATE TABLE tags (name TEXT)')
-    con.execute('DROP TABLE IF EXISTS documents_tags')
-    con.execute('CREATE TABLE documents_tags (document INTEGER, tag INTEGER)')
-
+    
 
 def select_documents(fields, rowids=None, where=None, args=()):
     assert not (rowids and where)
@@ -38,16 +47,17 @@ def select_documents(fields, rowids=None, where=None, args=()):
        sql += ' WHERE rowid in ({})'.format(','.join(map(str, rowids)))
     elif where:
        sql += ' WHERE ' + where
-    return itertools.imap(dict, con.execute(sql, args))
+    sql += ' ORDER BY rowid DESC'
+    return map(dict, con.execute(sql, args))
 
 
 def update_document(doc):
     b = parse_bibtex(doc['bibtex'])
     con.execute('''UPDATE documents SET 
-        bibtex=?,author=?,title=?,year=?,rating=?,filename=?
+        bibtex=?,author=?,title=?,year=?,rating=?,filename=?,tags=?
         WHERE rowid=?''',
         (doc['bibtex'], b['author'], b['title'], b['year'], doc['rating'], 
-        doc['filename'], doc['rowid']))
+        doc['filename'], doc['tags'], doc['rowid']))
         
     
 def insert_document(fname):
@@ -73,11 +83,17 @@ def insert_document(fname):
     return cur.lastrowid
 
 
-def import_mendeley():
-    dir = u'/home/jure/.mendeley'
-    for base in os.listdir(dir):
-        insert_document(os.path.join(dir, base))
-    
+def delete_document(doc):
+    con.execute('DELETE FROM documents WHERE rowid=?', (doc['rowid'],))
+    os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+
+
+def get_tags():
+    tags = set()
+    for row in con.execute('SELET tags FROM documents'):
+        tags.update(tag.strip() for tag in row['tags'].split(';'))
+    return tags
+
 
 def parse_bibtex(bibtex):
     d = collections.defaultdict(unicode)
