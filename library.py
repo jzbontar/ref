@@ -18,31 +18,28 @@ DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
 
 
 def create_tables():
-    cur.execute('DROP TABLE IF EXISTS documents')
-    cur.execute('''CREATE TABLE documents 
+    con.execute('DROP TABLE IF EXISTS documents')
+    con.execute('''CREATE TABLE documents 
         (bibtex TEXT, author TEXT, title TEXT, year INTEGER, rating INTEGER, 
-        filename TEXT, fulltext TEXT)''')
-    cur.execute('DROP TABLE IF EXISTS tags')
-    cur.execute('CREATE TABLE tags (name TEXT)')
-    cur.execute('DROP TABLE IF EXISTS documents_tags')
-    cur.execute('CREATE TABLE documents_tags (document INTEGER, tag INTEGER)')
+        filename TEXT, fulltext TEXT, 
+        added TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    con.execute('DROP TABLE IF EXISTS tags')
+    con.execute('CREATE TABLE tags (name TEXT)')
+    con.execute('DROP TABLE IF EXISTS documents_tags')
+    con.execute('CREATE TABLE documents_tags (document INTEGER, tag INTEGER)')
 
 
-def select_documents(id=None):
-    args = []
-    where = ''
-    if id:
-        where = ' WHERE rowid=?'
-        args.append(id)
-    cur.execute('''SELECT rowid, bibtex, author, title, year, rating, filename
-        FROM documents''' + where, args)
-    return [dict(row) for row in cur]
+def select_documents(fields, rowids=None):
+    sql = 'SELECT {} FROM documents'.format(','.join(fields))
+    if rowids:
+       sql += ' WHERE rowid in ({})'.format(','.join(map(str, rowids)))
+    return map(dict, con.execute(sql))
 
 
 def update_document(doc):
     b = parse_bibtex(doc['bibtex'])
-    cur.execute('''UPDATE documents SET 
-        bibtex=?, author=?, title=?, year=?, rating=?,filename=?
+    con.execute('''UPDATE documents SET 
+        bibtex=?,author=?,title=?,year=?,rating=?,filename=?
         WHERE rowid=?''',
         (doc['bibtex'], b['author'], b['title'], b['year'], doc['rating'], 
         doc['filename'], doc['rowid']))
@@ -56,16 +53,15 @@ def insert_document(fname):
             return 
 
     base = os.path.basename(fname)
-    cmd = ['pdftotext', fname, '-']
-    fulltext = Popen(cmd, stdout=PIPE).communicate()[0].decode('utf8')
-    title = extract_title(fname)
-    bibtex = fetch_bibtex(title)
+    cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
+    fulltext = Popen(cmd, stdout=PIPE).communicate()[0].decode('ascii')
+    bibtex = fetch_bibtex(extract_title(fname))
     b = parse_bibtex(bibtex)
     print('+ ' + b['title'])
     
-    cur.execute('''INSERT INTO documents
-        (bibtex, author, title, year, filename, fulltext) VALUES
-        (?, ?, ?, ?, ?, ?)''', 
+    cur = con.execute('''INSERT INTO documents
+        (bibtex,author,title,year,filename,fulltext) VALUES
+        (?,?,?,?,?,?)''', 
         (bibtex, b['author'], b['title'], b['year'], base, fulltext))
 
     shutil.copy(fname, os.path.join(DOCUMENT_DIR, base))
@@ -75,7 +71,7 @@ def insert_document(fname):
 def import_mendeley():
     dir = u'/home/jure/.mendeley'
     for base in os.listdir(dir):
-        add_document(os.path.join(dir, base))
+        insert_document(os.path.join(dir, base))
     
 
 def parse_bibtex(bibtex):
@@ -86,11 +82,8 @@ def parse_bibtex(bibtex):
 
 
 def extract_title(fname):
-    cmd = ['pdftohtml', '-xml', '-stdout', '-l', '1', fname]
-    xml = Popen(cmd, stdout=PIPE).communicate()[0].decode('utf8')
-
-    # pdftohtml has trouble with the letters 'fi'
-    xml = xml.replace(unichr(64257), 'fi')
+    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '1', fname]
+    xml = Popen(cmd, stdout=PIPE).communicate()[0].decode('ascii')
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
     font_size = {id: int(size) for id, size in fontspec}
@@ -162,10 +155,9 @@ def unescape(data):
     return re.sub(r"&#?[A-Za-z0-9]+?;", replace_entities, data)
 
 
-conn = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
-conn.isolation_level = None
-conn.row_factory = sqlite3.Row
-cur = conn.cursor()
+con = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
+con.isolation_level = None
+con.row_factory = sqlite3.Row
 
 for dir in (BASE_DIR, DOCUMENT_DIR):
     if not os.path.exists(dir):
