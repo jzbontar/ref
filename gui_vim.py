@@ -9,6 +9,23 @@ sys.path.append('/home/jure/devel/library')
 import library
 
 
+def search(s):
+    s = '%{}%'.format(s)
+
+    fields = ('title', 'author', 'fulltext')
+    for field in fields:
+        heading = '# {}'.format(field.upper())
+        if field == fields[0]:
+            main_buf[:] = [heading]
+        else:
+            main_buf.append(heading)
+        res = library.select_documents(headers, where='{} LIKE ?'.format(field), args=(s,))
+        for doc in res:
+            main_buf.append(str_document(doc))
+        if field != fields[-1]:
+            main_buf.append('')
+
+
 def parse_info():
     bibtex, rest = '\n'.join(info_buf).decode('utf8').split('\n}\n', 1)
     doc = {'bibtex': bibtex + '\n}'}
@@ -35,6 +52,9 @@ def encode_val(val):
 
 
 def write_info(doc):
+    if not doc:
+        info_buf[:] = []
+        return
     buf = doc['bibtex'].encode('utf8').splitlines()
     if not buf:
         buf = ['@{', '  title={}', '}']
@@ -50,7 +70,10 @@ def str_document(doc):
 
 def selected_document():
     rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
-    return library.select_documents(headers + ['bibtex', 'filename'], (rowid,))[0]
+    if rowid:
+        return next(library.select_documents(headers + ['bibtex', 'filename'], rowids=(rowid,)))
+    else:
+        return None
 
 
 def resize():
@@ -67,7 +90,7 @@ def resize():
 
 
 def update_main(rowids):
-    docs = {d['rowid']: d for d in library.select_documents(headers, rowids)}
+    docs = {d['rowid']: d for d in library.select_documents(headers, rowids=rowids)}
 
     for i, line in enumerate(main_buf):
         id = get_rowid(line)
@@ -116,4 +139,6 @@ c('autocmd VimResized * python resize()')
 c('map <c-x> :qa!<CR>')
 c('map <c-o> :python open_document()<CR>')
 c('map <c-w>o <NOP>')
+c('map // :Search ')
 c('command Fetch py fetch_bibtex()')
+c('command -nargs=1 Search py search("<args>")')

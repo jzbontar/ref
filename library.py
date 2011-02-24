@@ -10,6 +10,7 @@ import shutil
 import sqlite3
 import sys
 import time
+import itertools
 import urllib2
 
 
@@ -29,11 +30,15 @@ def create_tables():
     con.execute('CREATE TABLE documents_tags (document INTEGER, tag INTEGER)')
 
 
-def select_documents(fields, rowids=None):
+def select_documents(fields, rowids=None, where=None, args=()):
+    assert not (rowids and where)
+
     sql = 'SELECT {} FROM documents'.format(','.join(fields))
     if rowids:
        sql += ' WHERE rowid in ({})'.format(','.join(map(str, rowids)))
-    return map(dict, con.execute(sql))
+    elif where:
+       sql += ' WHERE ' + where
+    return itertools.imap(dict, con.execute(sql, args))
 
 
 def update_document(doc):
