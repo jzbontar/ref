@@ -1,81 +1,91 @@
+from subprocess import Popen, PIPE
+import os
+import re
+import shutil
 import sqlite3
 import sys
 import vim
-import re
 
 sys.path.append('/home/jure/devel/library')
-import document
-
-
-def parse_bibtex(bibtex):
-    reg = r'^\s*(title|author|year)={*(.+?)}*,?$'
-    return dict(re.findall(reg, bibtex, re.MULTILINE))
+import library
 
 
 def parse_info():
-    bibtex, info = '\n'.join(info_buf).decode('utf8').split('\n\n', 1)
-    info = dict(re.findall(r'(\w+)=(.*)', info))
+    bibtex, rest = '\n'.join(info_buf).split('\n}\n', 1)
+    doc = {'bibtex': bibtex + '\n}'}
+    doc.update(dict(re.findall(r'(\w+)=(.*)', rest)))
+    for k, v in doc.items():
+        doc[k] = v.decode('utf8')
+    doc['rowid'] = int(doc['rowid'])
+    return doc
 
-    return bibtex, info
 
-
-def write_info(bibtex, info):
-    buf = bibtex.encode('utf8').splitlines()
-    buf.extend([''] + ['{}={}'.format(k, v) for k, v in info.items()])
+def write_info(doc):
+    buf = doc['bibtex'].encode('utf8').splitlines()
+    if not buf:
+        buf = ['@{', '  title={}', '}']
+    for attr in ('rowid', 'rating', 'filename'):
+        val = doc[attr] or ''
+        if isinstance(val, unicode):
+            val = val.encode('utf8')
+        buf.append('{}={}'.format(attr, val))
     info_buf[:] = buf
 
 
-def str_document(id, bibtex):
-    row = parse_bibtex(bibtex)
-    row['id'] = id
-
-    hdr = (u'id', u'author', u'title', u'year')
-    return '  '.join(str(row.get(h, ''))[:col_size[h]].ljust(col_size[h]) for h in hdr)
+def str_document(doc):
+    hdr = ('rowid', 'rating', 'title', 'author', 'year')
+    cols = (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in hdr)
+    return '  '.join(cols)
 
 
-def cursor_moved():
-    id = int(vim.current.line.split()[0])
-    cur.execute('SELECT bibtex FROM documents WHERE ROWID=?', (id,))
-    bibtex = cur.fetchone()[0]
-    write_info(bibtex, {'id': id})
+def selected_document():
+    rowid = int(main_buf[main_win.cursor[0] - 1].split()[0])
+    return library.select_documents(id=rowid)[0]
 
 
-def save_info(bibtex, info):
-    cur.execute('update documents set bibtex=? where ROWID=?', (bibtex, info['id']))
-    for i, line in enumerate(main_buf):
-        if line.split()[0] == info['id']:
-            main_buf[i] = str_document(info['id'], bibtex)
+def save_info(doc):
+    library.update_document(doc)
+    update_main(doc['rowid'])
 
 
-def reload_main():
+def resize():
     global col_size
 
-    col_size = {'year': 4, 'id': 3}
+    info_win.height = 15
+    col_size = {'year': 4, 'rowid': 3, 'rating': 2}
     left = main_win.width - sum(col_size.values()) - 2 * len(col_size) - 2
     col_size['author'] = int(round(left * 0.2))
     col_size['title'] = left - col_size['author']
-    cur.execute('select ROWID, bibtex from documents')
-    main_buf[:] = [str_document(*res) for res in cur.fetchall()]
+    update_main()
+
+
+def update_main(rowid=None):
+    #TODO: check if this is slow for rowid=None
+    for i, line in enumerate(main_buf):
+        try:
+            id = int(line.split()[0])
+        except (ValueError, IndexError):
+            continue
+        if not rowid or rowid == id:
+            doc = library.select_documents(id)[0]
+            main_buf[i] = str_document(doc)
+
+
+def reload_main():
+    main_buf[:] = [str_document(doc) for doc in library.select_documents()]
 
 
 def fetch_bibtex():
-    bibtex, info = parse_info()
-    title = parse_bibtex(bibtex)['title']
-    bibtex = document.fetch_bibtex(title)
-    save_info(bibtex, info)
-    write_info(bibtex, info)
+    doc = parse_info()
+    title = library.parse_bibtex(doc['bibtex'])['title']
+    doc['bibtex'] = library.fetch_bibtex(title)
+    save_info(doc)
+    write_info(doc)
 
-BASE_DIR = os.path.expanduser('~/.library/')
-DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
-DB_FILE = os.path.join(BASE_DIR, 'db.sqlite3')
 
-conn = sqlite3.connect(DB_FILE)
-conn.isolation_level = None
-cur = conn.cursor()
-
-for dir in (BASE_DIR, DOCUMENT_DIR):
-    if not os.path.exists(dir):
-        os.mkdir(dir)
+def open_document():
+    filename = selected_document()['filename']
+    Popen(['xdg-open', os.path.join(library.DOCUMENT_DIR, filename)], stderr=PIPE, stdout=PIPE)
 
 
 c = vim.command
@@ -87,14 +97,15 @@ c('below new info')
 c('set buftype=nofile')
 info_buf, info_win = vim.current.buffer, vim.current.window
 
-info_win.height = 20
-
 c(':1winc w')
+resize()
 reload_main()
- 
-c('autocmd CursorMoved main python cursor_moved()')
-c('autocmd BufLeave,VimLeave info python save_info(*parse_info())')
-c('map X :qa!<CR>')
-c('map <c-k> 1<c-w><c-w>')
-c('map <c-j> 2<c-w><c-w>')
+
+c('autocmd CursorMoved main python write_info(selected_document())')
+c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
+c('autocmd VimResized * python resize()')
+c('map <c-x> :qa!<CR>')
+c('map <c-m> 1<c-w><c-w>')
+c('map <c-i> 2<c-w><c-w>')
+c('map <c-o> :python open_document()<CR>')
 c('command Fetch py fetch_bibtex()')
