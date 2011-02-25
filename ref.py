@@ -1,3 +1,5 @@
+#! /usr/bin/env python2
+
 from subprocess import Popen, PIPE
 import collections
 import filecmp
@@ -13,17 +15,9 @@ import itertools
 import urllib2
 
 
-BASE_DIR = os.path.expanduser('~/.library/')
+BASE_DIR = os.path.expanduser('~/.ref/')
 DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
 
-
-def create_test_data():
-    import string
-
-    def rs(n):
-        return ''.join(random.choice(string.printable) for _ in range(n))
-
-    # TODO
 
 def import_mendeley():
     dir = u'/home/jure/.mendeley'
@@ -32,10 +26,9 @@ def import_mendeley():
 
 
 def create_tables():
-    con.execute('DROP TABLE IF EXISTS documents')
-    con.execute('''CREATE TABLE documents 
-        (bibtex TEXT, author TEXT, title TEXT, year INTEGER, rating INTEGER, 
-        filename TEXT, fulltext TEXT, tags TEXT,
+    con.execute('''CREATE TABLE IF NOT EXISTS documents 
+        (bibtex TEXT, author TEXT, title TEXT, year INTEGER, journal TEXT, 
+        rating INTEGER, filename TEXT, fulltext TEXT, tags TEXT,
         added TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     
 
@@ -52,59 +45,92 @@ def select_documents(fields, rowids=None, where=None, args=()):
 
 
 def update_document(doc):
-    b = parse_bibtex(doc['bibtex'])
+    doc.update(parse_bibtex(doc['bibtex']))
+    rename_document(doc)
     con.execute('''UPDATE documents SET 
-        bibtex=?,author=?,title=?,year=?,rating=?,filename=?,tags=?
+        bibtex=?,author=?,title=?,year=?,journal=?,rating=?,filename=?,tags=?
         WHERE rowid=?''',
-        (doc['bibtex'], b['author'], b['title'], b['year'], doc['rating'], 
-        doc['filename'], doc['tags'], doc['rowid']))
+        (doc['bibtex'], doc['author'], doc['title'], doc['year'],
+        doc['journal'], doc['rating'], doc['filename'], doc['tags'],
+        doc['rowid']))
         
     
 def insert_document(fname):
     if os.path.splitext(fname)[1] != '.pdf':
         return
-    for fname2 in os.listdir(DOCUMENT_DIR):
-        if filecmp.cmp(fname, os.path.join(DOCUMENT_DIR, fname2)):
+
+    for base2 in os.listdir(DOCUMENT_DIR):
+        fname2 = os.path.join(DOCUMENT_DIR, base2)
+        if filecmp.cmp(fname, fname2):
+            print 'Could not insert. Duplicate ({})?'.format(fname2)
             return 
 
-    base = os.path.basename(fname)
+    doc = collections.defaultdict(unicode)
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
-    fulltext = Popen(cmd, stdout=PIPE).communicate()[0].decode('ascii')
-    bibtex = fetch_bibtex(extract_title(fname))
-    b = parse_bibtex(bibtex)
-    print('+ ' + b['title'])
+    doc['fulltext'] = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0].decode('ascii')
+    doc['bibtex'] = fetch_bibtex(extract_title(fname))
+    doc['filename'] = os.path.join(DOCUMENT_DIR, 'tmp.pdf')
     
     cur = con.execute('''INSERT INTO documents
-        (bibtex,author,title,year,filename,fulltext) VALUES
-        (?,?,?,?,?,?)''', 
-        (bibtex, b['author'], b['title'], b['year'], base, fulltext))
+        (bibtex,fulltext) VALUES (?,?)''', 
+        (doc['bibtex'], doc['fulltext']))
+    doc['rowid'] = cur.lastrowid
+    shutil.copy(fname, doc['filename'])
+    update_document(doc)
+    print '+', fname
+    return doc['rowid']
 
-    shutil.copy(fname, os.path.join(DOCUMENT_DIR, base))
-    return cur.lastrowid
 
-
-def delete_document(doc):
+def delete_document(rowid):
+    doc = select_documents(('rowid', 'filename'), rowids=(rowid,))[0]
     con.execute('DELETE FROM documents WHERE rowid=?', (doc['rowid'],))
-    os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+    try:
+        os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+    except OSError:
+        pass
 
+
+def rename_document(doc):
+    if doc['author'].count(', ') > 2:
+        author = doc['author'].split(', ')[0] + ' et al.'
+    else:
+        author = doc['author']
+    fields = (author, doc['year'], doc['title'], str(doc['rowid'])) 
+    base = ' - '.join(filter(None, fields))
+    base += '.' + doc['filename'].split('.')[-1]
+
+    if doc['filename'] != base:
+        src = os.path.join(DOCUMENT_DIR, doc['filename'])
+        dst = os.path.join(DOCUMENT_DIR, base)
+        if os.path.isfile(dst):
+            print 'Could not rename. Duplicate?'
+            return
+        os.rename(src, dst)
+        doc['filename'] = base
+    
 
 def get_tags():
     tags = set()
-    for row in con.execute('SELET tags FROM documents'):
-        tags.update(tag.strip() for tag in row['tags'].split(';'))
+    for row in con.execute('SELECT tags FROM documents'):
+        if row['tags']:
+            tags.update(tag.strip() for tag in row['tags'].split(';'))
     return tags
 
 
 def parse_bibtex(bibtex):
     d = collections.defaultdict(unicode)
-    reg = r'^\s*(title|author|year)={*(.+?)}*,?$'
+    reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
+    for k, v in d.items():
+        d[k] = re.sub('[^-\w ,:]', '', v)
+    d['author'] = ', '.join(a[:a.find(',')]
+        for a in d['author'].split(' and '))
     return d
 
 
 def extract_title(fname):
     cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '1', fname]
-    xml = Popen(cmd, stdout=PIPE).communicate()[0].decode('ascii')
+    xml = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0].decode('ascii')
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
     font_size = {id: int(size) for id, size in fontspec}
@@ -137,8 +163,20 @@ def fetch_bibtex(title):
     return scholar_read(match.group(1))
 
 
+def delay(n, interval):
+    def decorator(f):
+        call_times = collections.deque()
+        def helper(*args):
+            if len(call_times) == n:
+                time.sleep(max(0, interval + call_times.pop() - time.time()))
+            call_times.appendleft(time.time())
+            return f(*args)
+        return helper
+    return decorator
+
+
+@delay(4, 10)
 def scholar_read(url):
-    time.sleep(1)
     id = ''.join(random.choice('0123456789abcdef') for i in range(16))
     cookie = 'GSP=ID={}:CF=4;'.format(id)
     h = {'User-agent': 'Mozilla/5.0', 'Cookie': cookie}
@@ -176,13 +214,19 @@ def unescape(data):
     return re.sub(r"&#?[A-Za-z0-9]+?;", replace_entities, data)
 
 
-con = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
-con.isolation_level = None
-con.row_factory = sqlite3.Row
-
 for dir in (BASE_DIR, DOCUMENT_DIR):
     if not os.path.exists(dir):
         os.mkdir(dir)
 
-#create_tables()
+con = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
+con.isolation_level = None
+con.row_factory = sqlite3.Row
+create_tables()
+
 #import_mendeley()
+
+if __name__ == '__main__':
+    import sys
+
+    for fname in sys.argv[1:]:
+        insert_document(fname)
