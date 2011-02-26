@@ -1,5 +1,7 @@
 #! /usr/bin/env python2
 
+# TODO: remove filename
+
 from subprocess import Popen, PIPE
 import collections
 import filecmp
@@ -25,20 +27,48 @@ def import_mendeley():
         insert_document(os.path.join(dir, base))
 
 
+def create_test_data():
+    from random import randint, choice, sample
+    from string import ascii_letters
+
+    def r(n, m):
+        return ''.join(choice(ascii_letters) for _ in range(randint(n, m)))
+
+    all_tags = [r(3, 10) for i in range(100)]
+
+    for row in range(1000):
+        title = ' '.join(r(3, 10) for i in range(randint(5, 15)))
+        author = ', '.join(r(3, 15) for _ in range(randint(1, 5)))
+        year = unicode(randint(1800, 2000))
+        journal = ' '.join(r(3, 10) for i in range(randint(5, 10)))
+        rating = unicode(randint(1, 10))
+        filename = r(30, 40)
+        fulltext = r(10000, 100000)
+        tags = '; '.join(sample(all_tags, randint(0, 3)))
+        o = '\n  '.join(r(4, 10) + '=' + r(10, 50) for i in range(randint(2, 10)))
+        bibtex = '''@book{{foo
+  title={},
+  author={},
+  year={},
+  {}
+}}'''.format(title, author, year, o)
+
+        con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?)',
+            (bibtex, author, title, year, journal, tags, rating, filename,
+            fulltext))
+    con.commit()
+
+
 def create_tables():
     con.execute('''CREATE TABLE IF NOT EXISTS documents 
         (bibtex TEXT, author TEXT, title TEXT, year INTEGER, journal TEXT, 
-        rating INTEGER, filename TEXT, fulltext TEXT, tags TEXT,
-        added TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+        tags TEXT, rating INTEGER, filename TEXT, fulltext TEXT)''')
+    con.commit()
     
 
-def select_documents(fields, rowids=None, where=None, args=()):
-    assert not (rowids and where)
-
+def select_documents(fields, where=None, args=()):
     sql = 'SELECT {} FROM documents'.format(','.join(fields))
-    if rowids:
-       sql += ' WHERE rowid in ({})'.format(','.join(map(str, rowids)))
-    elif where:
+    if where:
        sql += ' WHERE ' + where
     sql += ' ORDER BY rowid DESC'
     return map(dict, con.execute(sql, args))
@@ -53,6 +83,7 @@ def update_document(doc):
         (doc['bibtex'], doc['author'], doc['title'], doc['year'],
         doc['journal'], doc['rating'], doc['filename'], doc['tags'],
         doc['rowid']))
+    con.commit()
         
     
 def insert_document(fname):
@@ -74,20 +105,31 @@ def insert_document(fname):
     cur = con.execute('''INSERT INTO documents
         (bibtex,fulltext) VALUES (?,?)''', 
         (doc['bibtex'], doc['fulltext']))
+    con.commit()
     doc['rowid'] = cur.lastrowid
     shutil.copy(fname, doc['filename'])
     update_document(doc)
-    print '+', fname
     return doc['rowid']
 
 
 def delete_document(rowid):
-    doc = select_documents(('rowid', 'filename'), rowids=(rowid,))[0]
+    doc = select_documents(('rowid', 'filename'), 'rowid=?', (rowid,))[0]
     con.execute('DELETE FROM documents WHERE rowid=?', (doc['rowid'],))
+    con.commit()
     try:
         os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
     except OSError:
         pass
+
+
+def check_filenames():
+    filenames = set(os.listdir(DOCUMENT_DIR))
+    for row in con.execute('SELECT filename FROM documents'):
+        if row['filename'] not in filenames:
+            raise IOError('Filename not found ' + row['filename'])
+        filenames.remove(row['filename'])
+    for filename in filenames:
+        raise IOError('Filename not in database ' + filename)
 
 
 def rename_document(doc):
@@ -112,6 +154,7 @@ def rename_document(doc):
 def get_tags():
     tags = set()
     for row in con.execute('SELECT tags FROM documents'):
+        pass
         if row['tags']:
             tags.update(tag.strip() for tag in row['tags'].split(';'))
     return tags
@@ -129,7 +172,7 @@ def parse_bibtex(bibtex):
 
 
 def extract_title(fname):
-    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '1', fname]
+    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '2', fname]
     xml = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0].decode('ascii')
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
@@ -217,16 +260,17 @@ def unescape(data):
 for dir in (BASE_DIR, DOCUMENT_DIR):
     if not os.path.exists(dir):
         os.mkdir(dir)
-
+ 
 con = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
-con.isolation_level = None
 con.row_factory = sqlite3.Row
+ 
 create_tables()
 
-#import_mendeley()
-
 if __name__ == '__main__':
-    import sys
-
-    for fname in sys.argv[1:]:
-        insert_document(fname)
+#    tags = get_tags()
+    create_test_data()
+#
+#     import sys
+# 
+#     for fname in sys.argv[1:]:
+#         insert_document(fname)

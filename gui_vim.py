@@ -19,7 +19,7 @@ def search(s):
     del main_buf[:]
     fields = ('tags', 'title', 'author', 'journal', 'fulltext')
     for field in fields:
-        res = ref.select_documents(headers, where='{} LIKE ?'.format(field), args=(s,))
+        res = ref.select_documents(headers, field + ' LIKE ?', (s,))
         if res:
             heading = '# {}'.format(field.upper())
             if len(main_buf) == 1:
@@ -37,12 +37,13 @@ def parse_info():
     for k, v in re.findall(r'(\w+)=(.*)', rest):
         doc[k.encode('utf8')] = v
     doc['rowid'] = int(doc['rowid'])
+    tags.update(doc['tags'].split('; '))
     return doc
 
 
 def save_info(doc):
     ref.update_document(doc)
-    update_main((doc['rowid'],))
+    update_main('rowid=?', (doc['rowid'],))
 
 
 def get_rowid(line):
@@ -62,7 +63,7 @@ def write_info(doc):
         return
     buf = doc['bibtex'].encode('utf8').splitlines()
     if not buf:
-        buf = ['@{', '  title={}', '}']
+        buf = ['@{', '  title=', '}']
     for attr in ('rowid', 'tags', 'rating', 'filename'):
         buf.append('{}={}'.format(attr, encode_val(doc[attr])))
     info_buf[:] = buf
@@ -76,29 +77,28 @@ def str_document(doc):
 def selected_document():
     rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
     if rowid:
-        return ref.select_documents(headers + ['bibtex', 'filename', 'tags'], rowids=(rowid,))[0]
+        return ref.select_documents(headers + ['bibtex', 'filename', 'tags'], 'rowid=?', (rowid,))[0]
     else:
         return None
 
 
 def resize():
+    global col_size
+
     info_win.height = 15
-    col_size.clear()
-    col_size.update({'year': 4, 'rowid': 3, 'rating': 2})
-    left = main_win.width - sum(col_size.values()) - 2 * len(col_size) - 2
-    col_size['author'] = int(round(left * 0.2))
-    col_size['title'] = left - col_size['author']
+    col_size = {'year': 4, 'rowid': 4, 'rating': 2, 'author': 30}
+    col_size['title'] = main_win.width - sum(col_size.values()) - 2 * len(col_size)
 
-    rowids = {get_rowid(line) for line in main_buf}
-    update_main(rowids - {None})
+    if main_buf[0] and len(main_buf) > 1:
+        update_main()
 
 
-def update_main(rowids):
-    docs = {d['rowid']: d for d in ref.select_documents(headers, rowids=rowids)}
+def update_main(where=None, args=()):
+    docs = {d['rowid']: d for d in ref.select_documents(headers, where, args)}
 
     for i, line in enumerate(main_buf):
         id = get_rowid(line)
-        if id and id in rowids:
+        if id in docs:
             main_buf[i] = str_document(docs[id])
 
 
@@ -122,7 +122,7 @@ def open_document():
 def add_document(fname):
     rowid = ref.insert_document(fname)
     if rowid:
-        doc = ref.select_documents(headers, (rowid,))[0]
+        doc = ref.select_documents(headers, 'rowid=?', (rowid,))[0]
         main_buf[:0] = [str_document(doc)]
         main_win.cursor = (1, 0)
 
@@ -145,7 +145,6 @@ def complete_tag(prefix):
 
 
 def insert_tag(tag):
-    tags.add(tag)
     for i, line in enumerate(info_buf):
         if line.startswith('tags='):
             info_buf[i] += '{}; '.format(tag)
@@ -171,6 +170,7 @@ info_buf, info_win = vim.current.buffer, vim.current.window
 c(':1winc w')
 resize()
 reload_main()
+#ref.check_filenames()
 
 c('autocmd CursorMoved main python write_info(selected_document())')
 c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
