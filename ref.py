@@ -24,6 +24,7 @@ DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
 def import_mendeley():
     dir = u'/home/jure/.mendeley'
     for base in os.listdir(dir):
+        print base
         insert_document(os.path.join(dir, base))
 
 
@@ -36,7 +37,7 @@ def create_test_data():
 
     all_tags = [r(3, 10) for i in range(100)]
 
-    for row in range(1000):
+    for row in range(100):
         title = ' '.join(r(3, 10) for i in range(randint(5, 15)))
         author = ', '.join(r(3, 15) for _ in range(randint(1, 5)))
         year = unicode(randint(1800, 2000))
@@ -74,9 +75,29 @@ def select_documents(fields, where=None, args=()):
     return map(dict, con.execute(sql, args))
 
 
+def get_filename(doc):
+    if doc['author'].count(', ') > 2:
+        author = doc['author'].split(', ')[0] + ' et al.'
+    else:
+        author = doc['author']
+    fields = (author, doc['year'], doc['title'], str(doc['rowid'])) 
+    filename = ' - '.join(filter(None, fields))
+    filename += '.' + doc['filename'].split('.')[-1]
+    return filename
+
 def update_document(doc):
     doc.update(parse_bibtex(doc['bibtex']))
-    rename_document(doc)
+
+    filename = get_filename(doc)
+    if doc['filename'] != filename:
+        src = os.path.join(DOCUMENT_DIR, doc['filename'])
+        dst = os.path.join(DOCUMENT_DIR, filename)
+        if os.path.isfile(dst):
+            print 'Could not rename. Duplicate?'
+            return
+        os.rename(src, dst)
+        doc['filename'] = filename
+
     con.execute('''UPDATE documents SET 
         bibtex=?,author=?,title=?,year=?,journal=?,rating=?,filename=?,tags=?
         WHERE rowid=?''',
@@ -100,14 +121,13 @@ def insert_document(fname):
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
     doc['fulltext'] = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0].decode('ascii')
     doc['bibtex'] = fetch_bibtex(extract_title(fname))
-    doc['filename'] = os.path.join(DOCUMENT_DIR, 'tmp.pdf')
     
-    cur = con.execute('''INSERT INTO documents
-        (bibtex,fulltext) VALUES (?,?)''', 
+    cur = con.execute('INSERT INTO documents (bibtex, fulltext) VALUES (?,?)',
         (doc['bibtex'], doc['fulltext']))
-    con.commit()
     doc['rowid'] = cur.lastrowid
-    shutil.copy(fname, doc['filename'])
+    doc['filename'] = fname
+    doc['filename'] = get_filename(doc)
+    shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
     update_document(doc)
     return doc['rowid']
 
@@ -131,25 +151,6 @@ def check_filenames():
     for filename in filenames:
         raise IOError('Filename not in database ' + filename)
 
-
-def rename_document(doc):
-    if doc['author'].count(', ') > 2:
-        author = doc['author'].split(', ')[0] + ' et al.'
-    else:
-        author = doc['author']
-    fields = (author, doc['year'], doc['title'], str(doc['rowid'])) 
-    base = ' - '.join(filter(None, fields))
-    base += '.' + doc['filename'].split('.')[-1]
-
-    if doc['filename'] != base:
-        src = os.path.join(DOCUMENT_DIR, doc['filename'])
-        dst = os.path.join(DOCUMENT_DIR, base)
-        if os.path.isfile(dst):
-            print 'Could not rename. Duplicate?'
-            return
-        os.rename(src, dst)
-        doc['filename'] = base
-    
 
 def get_tags():
     tags = set()
@@ -267,8 +268,9 @@ con.row_factory = sqlite3.Row
 create_tables()
 
 if __name__ == '__main__':
+    import_mendeley()
 #    tags = get_tags()
-    create_test_data()
+#    create_test_data()
 #
 #     import sys
 # 
