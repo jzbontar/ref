@@ -28,6 +28,7 @@ def import_mendeley():
 
 
 def create_test_data():
+    import textwrap
     from random import randint, choice, sample, random
 
     def r(n, m, words=re.sub('\W+', ' ', open('tolstoy.txt').read()).split()):
@@ -37,17 +38,21 @@ def create_test_data():
     with con:
         for i in range(10000):
             print i
+
             title = r(5, 10)
             author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
             year = str(randint(1800, 2000))
             journal = r(1, 5)
             rating = str(randint(1, 10))
             filename = r(10, 15)
-            if random() < 0.2:
+            q = random()
+            if q < 0.1:
                 fulltext = r(50000, 200000)
-            else:
+            elif q < 0.9:
                 fulltext = r(1000, 15000)
-            notes = r(0, 100)
+            else:
+                fulltext = ''
+            notes = textwrap.fill(r(0, 100))
             tags = '; '.join(sample(all_tags, randint(0, 3)))
             o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
             bibtex = '''@book{{foo
@@ -57,11 +62,13 @@ def create_test_data():
   journal={},
   {}
 }}'''.format(title, author, year, journal, o)
+            if random() < 0.1:
+                title = author = year = journal = bibtex = None
 
             con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?)',
                 (bibtex, title, author, year, tags, rating, filename, notes))
-            con.execute('INSERT INTO fts VALUES (?,?,?,?,?)',
-                (title, author, journal, tags, fulltext))
+            con.execute('INSERT INTO fts VALUES (?,?,?,?,?,?)',
+                (title, author, journal, tags, notes, fulltext))
 
 
 def optimize():
@@ -81,13 +88,11 @@ def create_tables():
             ({})'''.format(','.join(fts_columns)))
 
 
-def select_documents(fields, rowids=None, limit=0):
+def select_documents(fields, rowids=None):
     sql = 'SELECT {} FROM documents'.format(','.join(fields))
     if rowids:
        sql += ' WHERE rowid in ({})'.format(','.join(map(str, rowids)))
     sql += ' ORDER BY rowid DESC'
-    if limit:
-        sql += ' LIMIT {}'.format(limit)
     return con.execute(sql)
 
 
@@ -110,7 +115,7 @@ def search_documents(fields, query):
 
 def update_document(doc):
     filename = get_filename(doc)
-    if doc['filename'] != filename:
+    if False and doc['filename'] != filename:
         src = os.path.join(DOCUMENT_DIR, doc['filename'])
         dst = os.path.join(DOCUMENT_DIR, filename)
         if os.path.isfile(dst):
@@ -144,7 +149,7 @@ def insert_document(fname):
 
     doc = collections.defaultdict(str)
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
-    doc['fulltext'] = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0]
+    doc['fulltext'] = Popen(cmd, stdout=PIPE).communicate()[0]
     doc['bibtex'] = fetch_bibtex(extract_title(fname))
     doc.update(parse_bibtex(doc['bibtex']))
     
@@ -209,7 +214,7 @@ def get_tags():
 
 def extract_title(fname):
     cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '2', fname]
-    xml = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0]
+    xml = Popen(cmd, stdout=PIPE).communicate()[0]
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
     font_size = {id: int(size) for id, size in fontspec}
@@ -302,10 +307,11 @@ con.row_factory = sqlite3.Row
 con.text_factory = str
 con.execute("ATTACH '{}' as fts".format(os.path.join(BASE_DIR, 'fts.sqlite3')))
 
-fts_columns = 'title', 'author', 'journal', 'tags', 'fulltext'
+fts_columns = 'title', 'author', 'journal', 'tags', 'notes', 'fulltext'
 create_tables()
 
-#import_mendeley()
 if __name__ == '__main__':
-    create_test_data()
+    pass
+    import_mendeley()
+    #create_test_data()
     optimize()

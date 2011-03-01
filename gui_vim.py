@@ -17,7 +17,7 @@ def search(query):
         return
     del main_buf[:]
     res = ref.search_documents(headers, query)
-    fields = ('tags', 'title', 'author', 'journal', 'fulltext')
+    fields = ('tags', 'notes', 'title', 'author', 'journal', 'fulltext')
     for field in fields:
         docs = [str_document(row[0]) for row in res if row[1][field]]
         if docs:
@@ -31,11 +31,12 @@ def search(query):
 
 
 def parse_info():
-    bibtex, rest = '\n'.join(info_buf).split('\n}\n', 1)
+    bibtex, rest, notes = '\n'.join(info_buf).split('\n---\n')
     doc = ref.parse_bibtex(bibtex)
     doc.update(dict(re.findall(r'(\w+)=(.*)', rest)))
-    doc['bibtex'] = bibtex + '\n}'
+    doc['bibtex'] = bibtex
     doc['rowid'] = int(doc['rowid'])
+    doc['notes'] = notes
     doc.update(next(ref.select_documents(('filename',), (doc['rowid'],))))
     tags.update(doc['tags'].split('; '))
     return doc
@@ -48,8 +49,11 @@ def write_info(doc):
     buf = (doc['bibtex'] or '').splitlines()
     if not buf:
         buf = ['@{', '  title=', '}']
+    buf.append('---')
     for attr in ('rowid', 'tags', 'rating'):
         buf.append('{}={}'.format(attr, doc[attr] or ''))
+    buf.append('---')
+    buf.extend(doc['notes'].splitlines())
     info_buf[:] = buf
 
 
@@ -73,7 +77,7 @@ def str_document(doc):
 def selected_document():
     rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
     if rowid:
-        fields = headers + ('bibtex', 'tags', 'filename')
+        fields = headers + ('bibtex', 'tags', 'filename', 'notes')
         return next(ref.select_documents(fields, (rowid,)))
     else:
         return None
@@ -82,7 +86,7 @@ def selected_document():
 def resize():
     global col_size
 
-    info_win.height = 15
+    info_win.height = 25
     col_size = {'year': 4, 'rowid': 5, 'rating': 2, 'author': 30}
     col_size['title'] = main_win.width - sum(col_size.values()) - 2 * len(col_size)
 
@@ -103,10 +107,8 @@ def update_main(rowids=None):
             main_buf[i] = docs[id]
 
 
-def reload_main(limit=100):
-    docs = list(map(str_document, ref.select_documents(headers, limit=limit)))
-    if len(docs) == limit:
-        docs.append('...')
+def reload_main():
+    docs = list(map(str_document, ref.select_documents(headers)))
     main_buf[:] = docs
 
 
