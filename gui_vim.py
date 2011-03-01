@@ -36,8 +36,21 @@ def parse_info():
     doc.update(dict(re.findall(r'(\w+)=(.*)', rest)))
     doc['bibtex'] = bibtex + '\n}'
     doc['rowid'] = int(doc['rowid'])
+    doc.update(next(ref.select_documents(('filename',), (doc['rowid'],))))
     tags.update(doc['tags'].split('; '))
     return doc
+
+
+def write_info(doc):
+    if not doc:
+        info_buf[:] = []
+        return
+    buf = (doc['bibtex'] or '').splitlines()
+    if not buf:
+        buf = ['@{', '  title=', '}']
+    for attr in ('rowid', 'tags', 'rating'):
+        buf.append('{}={}'.format(attr, doc[attr] or ''))
+    info_buf[:] = buf
 
 
 def save_info(doc):
@@ -52,19 +65,7 @@ def get_rowid(line):
         return None
 
 
-def write_info(doc):
-    if not doc:
-        info_buf[:] = []
-        return
-    buf = doc['bibtex'].splitlines()
-    if not buf:
-        buf = ['@{', '  title=', '}']
-    for attr in ('rowid', 'tags', 'rating', 'filename'):
-        buf.append('{}={}'.format(attr, doc[attr] or ''))
-    info_buf[:] = buf
-
-
-def str_document(doc, headers=('rowid', 'rating', 'author', 'title', 'year')):
+def str_document(doc):
     cs = (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in headers)
     return '  '.join(cs)
 
@@ -155,6 +156,7 @@ def insert_tag(tag):
 
             
 headers = 'rowid', 'rating', 'author', 'title', 'year'
+tags = {}
 tags = ref.get_tags()
 col_size = {}
 
@@ -173,7 +175,7 @@ c(':1winc w')
 
 resize()
 reload_main()
-#ref.check_filenames()
+# ref.check_filenames()
 
 c('autocmd CursorMoved main python write_info(selected_document())')
 c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
@@ -186,7 +188,7 @@ c('map <c-w>o <NOP>')
 c('map // :Search ')
 c('com Fetch py fetch_bibtex()')
 c('com -nargs=1 -complete=customlist,CompleteTag Tag py insert_tag("<args>")')
-c('com -nargs=? -complete=customlist,CompleteTag Search py search("<args>")')
+c("com -nargs=? -complete=customlist,CompleteTag Search py search('''<args>''')")
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 

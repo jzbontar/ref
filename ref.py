@@ -21,7 +21,7 @@ DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
 
 
 def import_mendeley():
-    dir = u'/home/jure/.mendeley'
+    dir = '/home/jure/.mendeley'
     for base in os.listdir(dir):
         print base
         insert_document(os.path.join(dir, base))
@@ -34,22 +34,23 @@ def create_test_data():
         return ' '.join(choice(words) for i in range(randint(n, m)))
 
     all_tags = [r(1, 2) for i in range(100)]
-    for i in range(10000):
-        print i
-        title = r(5, 10)
-        author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
-        year = str(randint(1800, 2000))
-        journal = r(1, 5)
-        rating = str(randint(1, 10))
-        filename = r(10, 15)
-        if random() < 0.2:
-            fulltext = r(50000, 200000)
-        else:
-            fulltext = r(1000, 15000)
-        notes = r(0, 100)
-        tags = '; '.join(sample(all_tags, randint(0, 3)))
-        o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
-        bibtex = '''@book{{foo
+    with con:
+        for i in range(10000):
+            print i
+            title = r(5, 10)
+            author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
+            year = str(randint(1800, 2000))
+            journal = r(1, 5)
+            rating = str(randint(1, 10))
+            filename = r(10, 15)
+            if random() < 0.2:
+                fulltext = r(50000, 200000)
+            else:
+                fulltext = r(1000, 15000)
+            notes = r(0, 100)
+            tags = '; '.join(sample(all_tags, randint(0, 3)))
+            o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
+            bibtex = '''@book{{foo
   title={},
   author={},
   year={},
@@ -57,27 +58,27 @@ def create_test_data():
   {}
 }}'''.format(title, author, year, journal, o)
 
-        con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?)',
-            (bibtex, title, author, year, tags, rating, filename, notes))
-        con.execute('INSERT INTO search VALUES (?,?,?,?,?)',
-            (title, author, journal, tags, fulltext))
-    con.commit()
+            con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?)',
+                (bibtex, title, author, year, tags, rating, filename, notes))
+            con.execute('INSERT INTO fts VALUES (?,?,?,?,?)',
+                (title, author, journal, tags, fulltext))
 
 
 def optimize():
-    con.execute("INSERT INTO search(search) VALUES('optimize')")
+    with con:
+        con.execute("INSERT INTO fts(fts) VALUES('optimize')")
 
 
 def create_tables():
-    con.execute('''CREATE TABLE IF NOT EXISTS documents 
-        (bibtex TEXT, title TEXT, author TEXT, year INTEGER, tags TEXT, 
-        rating INTEGER, filename TEXT, notes TEXT)''')
-    # virtual tables do not have "IF NOT EXISTS"
-    try:
-        con.execute('''CREATE VIRTUAL TABLE search USING fts4
-            ({})'''.format(','.join(search_columns)))
-    except sqlite3.OperationalError:
-        pass
+    with con:
+        cur = con.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table'")
+        if cur.fetchone()[0] > 0:
+            return
+        con.execute('''CREATE TABLE documents 
+            (bibtex TEXT, title TEXT, author TEXT, year INTEGER, tags TEXT, 
+            rating INTEGER, filename TEXT, notes TEXT)''')
+        con.execute('''CREATE VIRTUAL TABLE fts.fts USING fts4
+            ({})'''.format(','.join(fts_columns)))
 
 
 def select_documents(fields, rowids=None, limit=0):
@@ -94,22 +95,22 @@ def search_documents(fields, query):
     hits = []
     cur = con.execute('''
         SELECT mi, {} FROM documents, (
-            SELECT rowid, matchinfo(search) as mi FROM search
-            WHERE search MATCH ?) as search
-        WHERE documents.rowid=search.rowid
+            SELECT rowid, matchinfo(fts) as mi FROM fts
+            WHERE fts MATCH ?) as fts
+        WHERE documents.rowid=fts.rowid
         ORDER BY rowid DESC'''.format(','.join(fields)), 
         (query,))
     for row in cur:
         p, c = struct.unpack_from('ii', row[0])
         xs = struct.unpack_from('i' * (p * c * 3 + 2), row[0])[2::3]
         col_hits = [sum(xs[i::c]) for i in range(c)]
-        hits.append((row, dict(zip(search_columns, col_hits))))
+        hits.append((row, dict(zip(fts_columns, col_hits))))
     return hits
 
 
 def update_document(doc):
     filename = get_filename(doc)
-    if False and doc['filename'] != filename:
+    if doc['filename'] != filename:
         src = os.path.join(DOCUMENT_DIR, doc['filename'])
         dst = os.path.join(DOCUMENT_DIR, filename)
         if os.path.isfile(dst):
@@ -118,17 +119,17 @@ def update_document(doc):
         os.rename(src, dst)
         doc['filename'] = filename
 
-    con.execute('''UPDATE documents SET 
-        bibtex=?,author=?,title=?,year=?,rating=?,filename=?,tags=?,notes=?
-        WHERE rowid=?''',
-        (doc['bibtex'], doc['author'], doc['title'], doc['year'],
-        doc['rating'], doc['filename'], doc['tags'], doc['notes'],
-        doc['rowid']))
-    con.execute('''UPDATE search SET title=?,author=?,journal=?,tags=?
-        WHERE rowid=?''',
-        (doc['title'], doc['author'], doc['journal'], doc['tags'],
-        doc['rowid']))
-        
+    with con:
+        con.execute('''UPDATE documents SET 
+            bibtex=?,author=?,title=?,year=?,rating=?,filename=?,tags=?,notes=?
+            WHERE rowid=?''',
+            (doc['bibtex'], doc['author'], doc['title'], doc['year'],
+            doc['rating'], doc['filename'], doc['tags'], doc['notes'],
+            doc['rowid']))
+        con.execute('''UPDATE fts SET title=?,author=?,journal=?,tags=?
+            WHERE rowid=?''',
+            (doc['title'], doc['author'], doc['journal'], doc['tags'],
+            doc['rowid']))
         
     
 def insert_document(fname):
@@ -147,11 +148,11 @@ def insert_document(fname):
     doc['bibtex'] = fetch_bibtex(extract_title(fname))
     doc.update(parse_bibtex(doc['bibtex']))
     
-    cur = con.execute('INSERT INTO documents DEFAULT VALUES')
+    with con:
+        con.execute('INSERT INTO fts (fulltext) VALUES (?)', 
+            (doc['fulltext'],))
+        cur = con.execute('INSERT INTO documents DEFAULT VALUES')
     doc['rowid'] = cur.lastrowid
-    cur = con.execute('INSERT INTO search (fulltext) VALUES (?)', 
-        doc['fulltext'])
-    assert doc['rowid'] == cur.lastrowid
     doc['filename'] = fname
     doc['filename'] = get_filename(doc)
     shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
@@ -161,8 +162,9 @@ def insert_document(fname):
 
 def delete_document(rowid):
     doc = next(select_documents(('rowid', 'filename'), (rowid,)))
-    con.execute('DELETE FROM documents WHERE rowid=?', (doc['rowid'],))
-    con.execute('DELETE FROM search WHERE rowid=?', (doc['rowid'],))
+    with con:
+        con.execute('DELETE FROM documents WHERE rowid=?', (doc['rowid'],))
+        con.execute('DELETE FROM fts WHERE rowid=?', (doc['rowid'],))
     os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
 
 
@@ -187,15 +189,6 @@ def check_filenames():
         raise IOError('Filename not in database ' + filename)
 
 
-def get_tags():
-    tags = set()
-    for row in con.execute('SELECT tags FROM documents'):
-        pass
-        if row['tags']:
-            tags.update(tag.strip() for tag in row['tags'].split(';'))
-    return tags
-
-
 def parse_bibtex(bibtex):
     d = collections.defaultdict(str)
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
@@ -205,6 +198,13 @@ def parse_bibtex(bibtex):
     d['author'] = ', '.join(a[:a.find(',')]
         for a in d['author'].split(' and '))
     return d
+
+
+def get_tags():
+    tags = set()
+    for row in con.execute('SELECT DISTINCT tags FROM documents'):
+        tags.update(map(str.strip, row['tags'].split(';')))
+    return tags
 
 
 def extract_title(fname):
@@ -254,7 +254,7 @@ def delay(n, interval):
     return decorator
 
 
-@delay(4, 10)
+@delay(8, 10)
 def scholar_read(url):
     id = ''.join(random.choice('0123456789abcdef') for i in range(16))
     cookie = 'GSP=ID={}:CF=4;'.format(id)
@@ -297,19 +297,15 @@ for dir in (BASE_DIR, DOCUMENT_DIR):
     if not os.path.exists(dir):
         os.mkdir(dir)
  
-con = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
+con = sqlite3.connect(os.path.join(BASE_DIR, 'documents.sqlite3'))
 con.row_factory = sqlite3.Row
 con.text_factory = str
-con.isolation_level = None
+con.execute("ATTACH '{}' as fts".format(os.path.join(BASE_DIR, 'fts.sqlite3')))
 
-search_columns = 'title', 'author', 'journal', 'tags', 'fulltext'
- 
+fts_columns = 'title', 'author', 'journal', 'tags', 'fulltext'
 create_tables()
 
+#import_mendeley()
 if __name__ == '__main__':
-#    import_mendeley()
-#    tags = get_tags()
     create_test_data()
     optimize()
-#    cur = con.execute('select rowid, bibtex from documents limit 1000')
-#    docs  = {d['rowid']: d for d in cur}
