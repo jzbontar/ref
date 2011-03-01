@@ -11,31 +11,30 @@ sys.path.append('/home/jure/devel/ref')
 import ref
 
 
-def search(s):
-    if not s:
+def search(query):
+    if not query:
         reload_main()
         return
-    s = '%{}%'.format(s)
     del main_buf[:]
+    res = ref.search_documents(headers, query)
     fields = ('tags', 'title', 'author', 'journal', 'fulltext')
     for field in fields:
-        res = ref.select_documents(headers, field + ' LIKE ?', (s,))
-        if res:
+        docs = [str_document(row[0]) for row in res if row[1][field]]
+        if docs:
             heading = '# {}'.format(field.upper())
             if len(main_buf) == 1:
                 main_buf[:] = [heading]
             else:
                 main_buf.append('')
                 main_buf.append(heading)
-            main_buf[len(main_buf):] = map(str_document, res)
+            main_buf[len(main_buf):] = docs
 
 
 def parse_info():
-    bibtex, rest = '\n'.join(info_buf).decode('utf8').split('\n}\n', 1)
-    doc = collections.defaultdict(unicode)
+    bibtex, rest = '\n'.join(info_buf).split('\n}\n', 1)
+    doc = ref.parse_bibtex(bibtex)
+    doc.update(dict(re.findall(r'(\w+)=(.*)', rest)))
     doc['bibtex'] = bibtex + '\n}'
-    for k, v in re.findall(r'(\w+)=(.*)', rest):
-        doc[k.encode('utf8')] = v
     doc['rowid'] = int(doc['rowid'])
     tags.update(doc['tags'].split('; '))
     return doc
@@ -43,7 +42,7 @@ def parse_info():
 
 def save_info(doc):
     ref.update_document(doc)
-    update_main('rowid=?', (doc['rowid'],))
+    update_main((doc['rowid'],))
 
 
 def get_rowid(line):
@@ -53,31 +52,28 @@ def get_rowid(line):
         return None
 
 
-def encode_val(val):
-    return unicode(val).encode('utf8') if val else ''
-
-
 def write_info(doc):
     if not doc:
         info_buf[:] = []
         return
-    buf = doc['bibtex'].encode('utf8').splitlines()
+    buf = doc['bibtex'].splitlines()
     if not buf:
         buf = ['@{', '  title=', '}']
     for attr in ('rowid', 'tags', 'rating', 'filename'):
-        buf.append('{}={}'.format(attr, encode_val(doc[attr])))
+        buf.append('{}={}'.format(attr, doc[attr] or ''))
     info_buf[:] = buf
 
 
-def str_document(doc):
-    cs = (encode_val(doc[h])[:col_size[h]].ljust(col_size[h]) for h in headers)
+def str_document(doc, headers=('rowid', 'rating', 'author', 'title', 'year')):
+    cs = (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in headers)
     return '  '.join(cs)
 
 
 def selected_document():
     rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
     if rowid:
-        return ref.select_documents(headers + ['bibtex', 'filename', 'tags'], 'rowid=?', (rowid,))[0]
+        fields = headers + ('bibtex', 'tags', 'filename')
+        return next(ref.select_documents(fields, (rowid,)))
     else:
         return None
 
@@ -86,30 +82,37 @@ def resize():
     global col_size
 
     info_win.height = 15
-    col_size = {'year': 4, 'rowid': 4, 'rating': 2, 'author': 30}
+    col_size = {'year': 4, 'rowid': 5, 'rating': 2, 'author': 30}
     col_size['title'] = main_win.width - sum(col_size.values()) - 2 * len(col_size)
 
-    if main_buf[0] and len(main_buf) > 1:
-        update_main()
+    update_main()
 
 
-def update_main(where=None, args=()):
-    docs = {d['rowid']: d for d in ref.select_documents(headers, where, args)}
+def update_main(rowids=None):
+    if not rowids:
+        rowids = filter(None, (get_rowid(line) for line in main_buf))
+        if not rowids:
+            return
+    cur = ref.select_documents(headers, rowids)
+    docs = {doc['rowid']: str_document(doc) for doc in cur}
 
     for i, line in enumerate(main_buf):
         id = get_rowid(line)
         if id in docs:
-            main_buf[i] = str_document(docs[id])
+            main_buf[i] = docs[id]
 
 
-def reload_main():
-    main_buf[:] = [str_document(doc) for doc in ref.select_documents(headers)]
+def reload_main(limit=100):
+    docs = list(map(str_document, ref.select_documents(headers, limit=limit)))
+    if len(docs) == limit:
+        docs.append('...')
+    main_buf[:] = docs
 
 
 def fetch_bibtex():
     doc = parse_info()
-    title = ref.parse_bibtex(doc['bibtex'])['title']
-    doc['bibtex'] = ref.fetch_bibtex(title)
+    doc['bibtex'] = ref.fetch_bibtex(doc['title'])
+    doc.update(ref.parse_bibtex(doc['bibtex']))
     save_info(doc)
     write_info(doc)
 
@@ -122,7 +125,7 @@ def open_document():
 def add_document(fname):
     rowid = ref.insert_document(fname)
     if rowid:
-        doc = ref.select_documents(headers, 'rowid=?', (rowid,))[0]
+        doc = next(ref.select_documents(headers, (rowid,)))
         main_buf[:0] = [str_document(doc)]
         main_win.cursor = (1, 0)
 
@@ -141,7 +144,7 @@ def delete_document(lineFrom, lineTo):
 
 
 def complete_tag(prefix):
-    return [tag.encode('utf8') for tag in tags if tag.startswith(prefix)]
+    return [tag for tag in tags if tag.startswith(prefix)]
 
 
 def insert_tag(tag):
@@ -151,7 +154,7 @@ def insert_tag(tag):
     save_info(parse_info())
 
             
-headers = ['rowid', 'rating', 'author', 'title', 'year']
+headers = 'rowid', 'rating', 'author', 'title', 'year'
 tags = ref.get_tags()
 col_size = {}
 
@@ -166,8 +169,8 @@ c('set buftype=nofile')
 c('set bufhidden=hide')
 c('setlocal noswapfile')
 info_buf, info_win = vim.current.buffer, vim.current.window
-
 c(':1winc w')
+
 resize()
 reload_main()
 #ref.check_filenames()

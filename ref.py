@@ -1,19 +1,18 @@
 #! /usr/bin/env python2
 
-# TODO: remove filename
-
 from subprocess import Popen, PIPE
 import collections
 import filecmp
 import htmlentitydefs
+import itertools
 import os
 import random
 import re
 import shutil
 import sqlite3
+import struct
 import sys
 import time
-import itertools
 import urllib2
 
 
@@ -29,67 +28,88 @@ def import_mendeley():
 
 
 def create_test_data():
-    from random import randint, choice, sample
-    from string import ascii_letters
+    from random import randint, choice, sample, random
 
-    def r(n, m):
-        return ''.join(choice(ascii_letters) for _ in range(randint(n, m)))
+    def r(n, m, words=re.sub('\W+', ' ', open('tolstoy.txt').read()).split()):
+        return ' '.join(choice(words) for i in range(randint(n, m)))
 
-    all_tags = [r(3, 10) for i in range(100)]
-
-    for row in range(100):
-        title = ' '.join(r(3, 10) for i in range(randint(5, 15)))
-        author = ', '.join(r(3, 15) for _ in range(randint(1, 5)))
-        year = unicode(randint(1800, 2000))
-        journal = ' '.join(r(3, 10) for i in range(randint(5, 10)))
-        rating = unicode(randint(1, 10))
-        filename = r(30, 40)
-        fulltext = r(10000, 100000)
+    all_tags = [r(1, 2) for i in range(100)]
+    for i in range(10000):
+        print i
+        title = r(5, 10)
+        author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
+        year = str(randint(1800, 2000))
+        journal = r(1, 5)
+        rating = str(randint(1, 10))
+        filename = r(10, 15)
+        if random() < 0.2:
+            fulltext = r(50000, 200000)
+        else:
+            fulltext = r(1000, 15000)
+        notes = r(0, 100)
         tags = '; '.join(sample(all_tags, randint(0, 3)))
-        o = '\n  '.join(r(4, 10) + '=' + r(10, 50) for i in range(randint(2, 10)))
+        o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
         bibtex = '''@book{{foo
   title={},
   author={},
   year={},
+  journal={},
   {}
-}}'''.format(title, author, year, o)
+}}'''.format(title, author, year, journal, o)
 
-        con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?)',
-            (bibtex, author, title, year, journal, tags, rating, filename,
-            fulltext))
+        con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?)',
+            (bibtex, title, author, year, tags, rating, filename, notes))
+        con.execute('INSERT INTO search VALUES (?,?,?,?,?)',
+            (title, author, journal, tags, fulltext))
     con.commit()
+
+
+def optimize():
+    con.execute("INSERT INTO search(search) VALUES('optimize')")
 
 
 def create_tables():
     con.execute('''CREATE TABLE IF NOT EXISTS documents 
-        (bibtex TEXT, author TEXT, title TEXT, year INTEGER, journal TEXT, 
-        tags TEXT, rating INTEGER, filename TEXT, fulltext TEXT)''')
-    con.commit()
-    
+        (bibtex TEXT, title TEXT, author TEXT, year INTEGER, tags TEXT, 
+        rating INTEGER, filename TEXT, notes TEXT)''')
+    # virtual tables do not have "IF NOT EXISTS"
+    try:
+        con.execute('''CREATE VIRTUAL TABLE search USING fts4
+            ({})'''.format(','.join(search_columns)))
+    except sqlite3.OperationalError:
+        pass
 
-def select_documents(fields, where=None, args=()):
+
+def select_documents(fields, rowids=None, limit=0):
     sql = 'SELECT {} FROM documents'.format(','.join(fields))
-    if where:
-       sql += ' WHERE ' + where
+    if rowids:
+       sql += ' WHERE rowid in ({})'.format(','.join(map(str, rowids)))
     sql += ' ORDER BY rowid DESC'
-    return map(dict, con.execute(sql, args))
+    if limit:
+        sql += ' LIMIT {}'.format(limit)
+    return con.execute(sql)
 
 
-def get_filename(doc):
-    if doc['author'].count(', ') > 2:
-        author = doc['author'].split(', ')[0] + ' et al.'
-    else:
-        author = doc['author']
-    fields = (author, doc['year'], doc['title'], str(doc['rowid'])) 
-    filename = ' - '.join(filter(None, fields))
-    filename += '.' + doc['filename'].split('.')[-1]
-    return filename
+def search_documents(fields, query):
+    hits = []
+    cur = con.execute('''
+        SELECT mi, {} FROM documents, (
+            SELECT rowid, matchinfo(search) as mi FROM search
+            WHERE search MATCH ?) as search
+        WHERE documents.rowid=search.rowid
+        ORDER BY rowid DESC'''.format(','.join(fields)), 
+        (query,))
+    for row in cur:
+        p, c = struct.unpack_from('ii', row[0])
+        xs = struct.unpack_from('i' * (p * c * 3 + 2), row[0])[2::3]
+        col_hits = [sum(xs[i::c]) for i in range(c)]
+        hits.append((row, dict(zip(search_columns, col_hits))))
+    return hits
+
 
 def update_document(doc):
-    doc.update(parse_bibtex(doc['bibtex']))
-
     filename = get_filename(doc)
-    if doc['filename'] != filename:
+    if False and doc['filename'] != filename:
         src = os.path.join(DOCUMENT_DIR, doc['filename'])
         dst = os.path.join(DOCUMENT_DIR, filename)
         if os.path.isfile(dst):
@@ -99,12 +119,16 @@ def update_document(doc):
         doc['filename'] = filename
 
     con.execute('''UPDATE documents SET 
-        bibtex=?,author=?,title=?,year=?,journal=?,rating=?,filename=?,tags=?
+        bibtex=?,author=?,title=?,year=?,rating=?,filename=?,tags=?,notes=?
         WHERE rowid=?''',
         (doc['bibtex'], doc['author'], doc['title'], doc['year'],
-        doc['journal'], doc['rating'], doc['filename'], doc['tags'],
+        doc['rating'], doc['filename'], doc['tags'], doc['notes'],
         doc['rowid']))
-    con.commit()
+    con.execute('''UPDATE search SET title=?,author=?,journal=?,tags=?
+        WHERE rowid=?''',
+        (doc['title'], doc['author'], doc['journal'], doc['tags'],
+        doc['rowid']))
+        
         
     
 def insert_document(fname):
@@ -117,14 +141,17 @@ def insert_document(fname):
             print 'Could not insert. Duplicate ({})?'.format(fname2)
             return 
 
-    doc = collections.defaultdict(unicode)
+    doc = collections.defaultdict(str)
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
-    doc['fulltext'] = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0].decode('ascii')
+    doc['fulltext'] = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0]
     doc['bibtex'] = fetch_bibtex(extract_title(fname))
+    doc.update(parse_bibtex(doc['bibtex']))
     
-    cur = con.execute('INSERT INTO documents (bibtex, fulltext) VALUES (?,?)',
-        (doc['bibtex'], doc['fulltext']))
+    cur = con.execute('INSERT INTO documents DEFAULT VALUES')
     doc['rowid'] = cur.lastrowid
+    cur = con.execute('INSERT INTO search (fulltext) VALUES (?)', 
+        doc['fulltext'])
+    assert doc['rowid'] == cur.lastrowid
     doc['filename'] = fname
     doc['filename'] = get_filename(doc)
     shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
@@ -133,13 +160,21 @@ def insert_document(fname):
 
 
 def delete_document(rowid):
-    doc = select_documents(('rowid', 'filename'), 'rowid=?', (rowid,))[0]
+    doc = next(select_documents(('rowid', 'filename'), (rowid,)))
     con.execute('DELETE FROM documents WHERE rowid=?', (doc['rowid'],))
-    con.commit()
-    try:
-        os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
-    except OSError:
-        pass
+    con.execute('DELETE FROM search WHERE rowid=?', (doc['rowid'],))
+    os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+
+
+def get_filename(doc):
+    if doc['author'].count(', ') > 2:
+        author = doc['author'].split(', ')[0] + ' et al.'
+    else:
+        author = doc['author']
+    fields = (author, doc['year'], doc['title'], str(doc['rowid'])) 
+    filename = ' - '.join(re.sub(r'[^-\w, ]', '', f) for f in fields if f)
+    filename += '.' + doc['filename'].split('.')[-1]
+    return filename
 
 
 def check_filenames():
@@ -162,7 +197,7 @@ def get_tags():
 
 
 def parse_bibtex(bibtex):
-    d = collections.defaultdict(unicode)
+    d = collections.defaultdict(str)
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
@@ -174,7 +209,7 @@ def parse_bibtex(bibtex):
 
 def extract_title(fname):
     cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '2', fname]
-    xml = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0].decode('ascii')
+    xml = Popen(cmd, stdout=PIPE, stderr=PIPE).communicate()[0]
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
     font_size = {id: int(size) for id, size in fontspec}
@@ -199,7 +234,7 @@ def extract_title(fname):
 def fetch_bibtex(title):
     if not title:
         return ''
-    url = '/scholar?q=allintitle:' + urllib2.quote(title.encode('utf8'))
+    url = '/scholar?q=allintitle:' + urllib2.quote(title)
     html = scholar_read(url)
     match = re.search(r'<a href="(/scholar.bib[^"]+)', html)
     if not match:
@@ -225,7 +260,7 @@ def scholar_read(url):
     cookie = 'GSP=ID={}:CF=4;'.format(id)
     h = {'User-agent': 'Mozilla/5.0', 'Cookie': cookie}
     req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib2.urlopen(req).read().decode('utf8'))
+    return unescape(urllib2.urlopen(req).read().decode('utf8').encode('utf8'))
 
 
 def striptags(html):
@@ -238,7 +273,7 @@ def unescape_charref(ref):
     if name.startswith("x"):
         name = name[1:]
         base = 16
-    return unichr(int(name, base))
+    return unichr(int(name, base)).encode('utf8')
 
 
 def replace_entities(match):
@@ -248,7 +283,7 @@ def replace_entities(match):
 
     repl = htmlentitydefs.name2codepoint.get(ent[1:-1])
     if repl is not None:
-        repl = unichr(repl)
+        repl = unichr(repl).encode('utf8')
     else:
         repl = ent
     return repl
@@ -264,15 +299,17 @@ for dir in (BASE_DIR, DOCUMENT_DIR):
  
 con = sqlite3.connect(os.path.join(BASE_DIR, 'db.sqlite3'))
 con.row_factory = sqlite3.Row
+con.text_factory = str
+con.isolation_level = None
+
+search_columns = 'title', 'author', 'journal', 'tags', 'fulltext'
  
 create_tables()
 
 if __name__ == '__main__':
-    import_mendeley()
+#    import_mendeley()
 #    tags = get_tags()
-#    create_test_data()
-#
-#     import sys
-# 
-#     for fname in sys.argv[1:]:
-#         insert_document(fname)
+    create_test_data()
+    optimize()
+#    cur = con.execute('select rowid, bibtex from documents limit 1000')
+#    docs  = {d['rowid']: d for d in cur}
