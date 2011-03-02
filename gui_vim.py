@@ -31,12 +31,12 @@ def search(query):
 
 
 def parse_info():
-    bibtex, rest, notes = '\n'.join(info_buf).split('\n---\n')
+    bibtex, rest, notes = '\n'.join(info_buf).split('\n---')
     doc = ref.parse_bibtex(bibtex)
     doc.update(dict(re.findall(r'(\w+)=(.*)', rest)))
     doc['bibtex'] = bibtex
     doc['rowid'] = int(doc['rowid'])
-    doc['notes'] = notes
+    doc['notes'] = notes.strip()
     doc.update(next(ref.select_documents(('filename',), (doc['rowid'],))))
     tags.update(doc['tags'].split('; '))
     return doc
@@ -177,7 +177,7 @@ c(':1winc w')
 
 resize()
 reload_main()
-# ref.check_filenames()
+ref.check_filenames()
 
 c('autocmd CursorMoved main python write_info(selected_document())')
 c('autocmd BufLeave,VimLeave info python save_info(parse_info())')

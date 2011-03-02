@@ -12,6 +12,7 @@ import shutil
 import sqlite3
 import struct
 import sys
+import tempfile
 import time
 import urllib2
 
@@ -115,7 +116,7 @@ def search_documents(fields, query):
 
 def update_document(doc):
     filename = get_filename(doc)
-    if False and doc['filename'] != filename:
+    if doc['filename'] != filename:
         src = os.path.join(DOCUMENT_DIR, doc['filename'])
         dst = os.path.join(DOCUMENT_DIR, filename)
         if os.path.isfile(dst):
@@ -131,15 +132,17 @@ def update_document(doc):
             (doc['bibtex'], doc['author'], doc['title'], doc['year'],
             doc['rating'], doc['filename'], doc['tags'], doc['notes'],
             doc['rowid']))
-        con.execute('''UPDATE fts SET title=?,author=?,journal=?,tags=?
-            WHERE rowid=?''',
+        con.execute('''UPDATE fts SET title=?,author=?,journal=?,tags=?,notes=? WHERE rowid=?''',
             (doc['title'], doc['author'], doc['journal'], doc['tags'],
-            doc['rowid']))
+            doc['notes'], doc['rowid']))
+    print doc['notes']
         
     
 def insert_document(fname):
-    if os.path.splitext(fname)[1] != '.pdf':
-        return
+    cleanup = []
+    if os.path.splitext(fname)[1] == '.7z':
+        fname, cleanup_func = extract_7z(fname)
+        cleanup.append(cleanup_func)
 
     for base2 in os.listdir(DOCUMENT_DIR):
         fname2 = os.path.join(DOCUMENT_DIR, base2)
@@ -147,10 +150,12 @@ def insert_document(fname):
             print 'Could not insert. Duplicate ({})?'.format(fname2)
             return 
 
+    ext = os.path.splitext(fname)[1]
+    extract_func = {'.pdf': extract_pdf, '.chm': extract_chm}[ext]
+
     doc = collections.defaultdict(str)
-    cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
-    doc['fulltext'] = Popen(cmd, stdout=PIPE).communicate()[0]
-    doc['bibtex'] = fetch_bibtex(extract_title(fname))
+    doc['title'], doc['fulltext'] = extract_func(fname)
+    doc['bibtex'] = fetch_bibtex(doc['title'])
     doc.update(parse_bibtex(doc['bibtex']))
     
     with con:
@@ -162,6 +167,8 @@ def insert_document(fname):
     doc['filename'] = get_filename(doc)
     shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
     update_document(doc)
+    for cleanup_func in cleanup:
+        cleanup_func()
     return doc['rowid']
 
 
@@ -199,7 +206,7 @@ def parse_bibtex(bibtex):
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
-        d[k] = re.sub('[^-\w ,:]', '', v)
+        d[k] = re.sub(r"[^-\w ,:']", '', v)
     d['author'] = ', '.join(a[:a.find(',')]
         for a in d['author'].split(' and '))
     return d
@@ -212,8 +219,43 @@ def get_tags():
     return tags
 
 
-def extract_title(fname):
-    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '2', fname]
+def extract_7z(fname):
+    def cleanup():
+        shutil.rmtree(dir)
+
+    name = os.path.splitext(os.path.basename(fname))[0]
+    dir = tempfile.mkdtemp(prefix='ref.')
+    for pwd in ('ebooksclub.org', 'ebooksclub_org', 'gigapedia.com', 'library.nu'):
+        p = Popen(['7z', 'x', fname, '-y', '-p' + pwd, '-o' + dir], stdout=PIPE)
+        p.communicate()
+        if p.returncode == 0:
+            for base in os.listdir(dir):
+                if os.path.splitext(base)[0] == name:
+                    return os.path.join(dir, base), cleanup
+    raise Exception('Could not extract 7z file.')
+
+
+def extract_chm(fname):
+    dir = tempfile.mkdtemp(prefix='ref.')
+    Popen(['extract_chmLib', fname, dir], stdout=PIPE).communicate()
+    for base in os.listdir(dir):
+        name, ext = os.path.splitext(base)
+        if ext == '.hhc':
+            hhc = open(os.path.join(dir, base)).read()
+            title = re.search(r'name="Name" value="([^"]+)"', hhc).group(1)
+            fulltext = ''
+            for html in re.findall(r'"({}/[^"]+)"'.format(name), hhc):
+                fulltext += striptags(open(os.path.join(dir, html)).read())
+            break
+    shutil.rmtree(dir)
+    return title, fulltext
+        
+
+def extract_pdf(fname):
+    cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
+    fulltext = Popen(cmd, stdout=PIPE).communicate()[0]
+
+    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '3', fname]
     xml = Popen(cmd, stdout=PIPE).communicate()[0]
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
@@ -229,11 +271,14 @@ def extract_title(fname):
         text_size = size + text.startswith('<b>') * 0.5
         groups.append((text_size, list(group)))
 
+    title = None
     for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
         title = ' '.join(map(lambda xs: xs[2], group)).strip()
         bad = ('abstract', 'introduction', 'relatedwork')
         if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
-            return title
+            break
+    return title, fulltext
+
 
 
 def fetch_bibtex(title):
@@ -269,7 +314,7 @@ def scholar_read(url):
 
 
 def striptags(html):
-    return re.sub(r'<[^>]+>', '', html)
+    return unescape(re.sub(r'<[^>]+>', '', html))
 
 
 def unescape_charref(ref):
@@ -312,6 +357,7 @@ create_tables()
 
 if __name__ == '__main__':
     pass
-    import_mendeley()
+    extract_chm('/home/jure/tmp/uM7TZdWNFGIk.chm')
+    #import_mendeley()
     #create_test_data()
-    optimize()
+    #optimize()
