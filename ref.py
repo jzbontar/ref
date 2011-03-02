@@ -151,7 +151,8 @@ def insert_document(fname):
             return 
 
     ext = os.path.splitext(fname)[1]
-    extract_func = {'.pdf': extract_pdf, '.chm': extract_chm}[ext]
+    fs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+    extract_func = fs.get(ext, lambda fname: (None, None))
 
     doc = collections.defaultdict(str)
     doc['title'], doc['fulltext'] = extract_func(fname)
@@ -206,7 +207,7 @@ def parse_bibtex(bibtex):
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
-        d[k] = re.sub(r"[^-\w ,:']", '', v)
+        d[k] = re.sub(r'[{}\\]', '', v)
     d['author'] = ', '.join(a[:a.find(',')]
         for a in d['author'].split(' and '))
     return d
@@ -233,6 +234,15 @@ def extract_7z(fname):
                 if os.path.splitext(base)[0] == name:
                     return os.path.join(dir, base), cleanup
     raise Exception('Could not extract 7z file.')
+
+
+def extract_djvu(fname):
+    fulltext = Popen(['djvutxt', fname], stdout=PIPE).communicate()[0]
+    title = re.match(r'(.*?)\n\n', fulltext, re.DOTALL).group(0)
+    title = re.sub(r'\s+', ' ', title).strip()
+    if len(title) > 100:
+        title = None
+    return title, fulltext
 
 
 def extract_chm(fname):
