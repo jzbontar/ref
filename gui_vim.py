@@ -48,7 +48,7 @@ def write_info(doc):
         return
     buf = (doc['bibtex'] or '').splitlines()
     if not buf:
-        buf = ['@{', '  title=', '}']
+        buf = ['@{', '  title=' + (doc['title'] or ''), '}']
     buf.append('---')
     for attr in ('rowid', 'tags', 'rating'):
         buf.append('{}={}'.format(attr, doc[attr] or ''))
@@ -78,9 +78,9 @@ def selected_document():
     rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
     if rowid:
         fields = headers + ('bibtex', 'tags', 'filename', 'notes')
-        return next(ref.select_documents(fields, (rowid,)))
-    else:
-        return None
+        docs = list(ref.select_documents(fields, (rowid,)))
+        if docs:
+            return docs[0]
 
 
 def resize():
@@ -134,6 +134,9 @@ def add_document(fname):
 
 
 def delete_document(lineFrom, lineTo):
+    if vim.current.buffer != main_buf:
+        print 'Deletion is only possible from the main buffer'
+        return
     rowids = set()
     for line in main_buf[lineFrom - 1:lineTo]:
         rowid = get_rowid(line)
@@ -146,7 +149,7 @@ def delete_document(lineFrom, lineTo):
             del main_buf[i]
 
 
-def complete_tag(prefix):
+def complete_tag(s):
     return [tag for tag in tags if tag.startswith(prefix)]
 
 
