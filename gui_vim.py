@@ -12,11 +12,15 @@ import ref
 
 
 def search(query):
+    global last_select_cmd
+
     if not query:
         reload_main()
         return
+
+    last_select_cmd = lambda: search(query)
     del main_buf[:]
-    for field, docs in ref.search_documents(headers, query):
+    for field, docs in ref.search_documents(headers, query, order):
         docs = map(str_document, docs)
         if docs:
             heading = '# {}'.format(field.upper())
@@ -68,8 +72,8 @@ def get_docid(line):
 
 
 def str_document(doc):
-    cs = (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in headers)
-    return '  '.join(cs)
+    return '  '.join(
+        (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in headers))
 
 
 def selected_document():
@@ -106,7 +110,10 @@ def update_main(docids=None):
 
 
 def reload_main():
-    docs = list(map(str_document, ref.select_documents(headers)))
+    global last_select_cmd
+
+    last_select_cmd = reload_main
+    docs = list(map(str_document, ref.select_documents(headers, order=order)))
     main_buf[:] = docs
 
 
@@ -157,7 +164,14 @@ def insert_tag(tag):
             info_buf[i] += '{}; '.format(tag)
     save_info(parse_info())
 
-            
+
+def order_documents(o):
+    global order
+
+    order = o
+    last_select_cmd()
+
+order = 'docid DESC'
 headers = 'docid', 'rating', 'author', 'title', 'year'
 tags = ref.get_tags()
 col_size = {}
@@ -191,6 +205,7 @@ c('map // :Search ')
 c('com Fetch py fetch_bibtex()')
 c('com -nargs=1 -complete=customlist,CompleteTag Tag py insert_tag("<args>")')
 c("com -nargs=? -complete=customlist,CompleteTag Search py search('''<args>''')")
+c('com -nargs=1 Order py order_documents("<args>")')
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 

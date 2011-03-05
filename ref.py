@@ -150,15 +150,16 @@ def delete_document(docid):
         os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
 
 
-def search_documents(fields, query):
+def search_documents(fields, query, order='docid DESC'):
     res = []
     for field in ('tags', 'title', 'author', 'journal', 'notes'):
-        cur = con.execute('SELECT {} FROM documents WHERE {} LIKE ?'.format(
-            ','.join(fields), field), ('%' + query + '%',))
+        cur = con.execute('''SELECT {} FROM documents WHERE {} LIKE ? 
+            ORDER BY {}'''.format(','.join(fields), field, order), 
+            ('%' + query + '%',))
         res.append((field, cur))
     cur = con.execute('''SELECT {} FROM documents JOIN 
         (SELECT docid FROM fulltext WHERE content MATCH ?)
-        USING(docid)'''.format(','.join(fields)), (query,))
+        USING(docid) ORDER BY {}'''.format(','.join(fields), order), (query,))
     res.append(('fulltext', cur))
     return res
         
