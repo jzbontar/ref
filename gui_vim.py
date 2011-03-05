@@ -16,10 +16,8 @@ def search(query):
         reload_main()
         return
     del main_buf[:]
-    res = ref.search_documents(headers, query)
-    fields = ('tags', 'notes', 'title', 'author', 'journal', 'fulltext')
-    for field in fields:
-        docs = [str_document(row[0]) for row in res if row[1][field]]
+    for field, docs in ref.search_documents(headers, query):
+        docs = map(str_document, docs)
         if docs:
             heading = '# {}'.format(field.upper())
             if len(main_buf) == 1:
@@ -35,9 +33,9 @@ def parse_info():
     doc = ref.parse_bibtex(bibtex)
     doc.update(dict(re.findall(r'(\w+)=(.*)', rest)))
     doc['bibtex'] = bibtex
-    doc['rowid'] = int(doc['rowid'])
+    doc['docid'] = int(doc['docid'])
     doc['notes'] = notes.strip()
-    doc.update(next(ref.select_documents(('filename',), (doc['rowid'],))))
+    doc.update(next(ref.select_documents(('filename',), (doc['docid'],))))
     tags.update(doc['tags'].split('; '))
     return doc
 
@@ -50,7 +48,7 @@ def write_info(doc):
     if not buf:
         buf = ['@{', '  title=' + (doc['title'] or ''), '}']
     buf.append('---')
-    for attr in ('rowid', 'tags', 'rating'):
+    for attr in ('docid', 'tags', 'rating'):
         buf.append('{}={}'.format(attr, doc[attr] or ''))
     buf.append('---')
     buf.extend(doc['notes'].splitlines())
@@ -59,10 +57,10 @@ def write_info(doc):
 
 def save_info(doc):
     ref.update_document(doc)
-    update_main((doc['rowid'],))
+    update_main((doc['docid'],))
 
 
-def get_rowid(line):
+def get_docid(line):
     try:
         return int(line.split()[0])
     except (ValueError, IndexError):
@@ -75,10 +73,10 @@ def str_document(doc):
 
 
 def selected_document():
-    rowid = get_rowid(main_buf[main_win.cursor[0] - 1])
-    if rowid:
+    docid = get_docid(main_buf[main_win.cursor[0] - 1])
+    if docid:
         fields = headers + ('bibtex', 'tags', 'filename', 'notes')
-        docs = list(ref.select_documents(fields, (rowid,)))
+        docs = list(ref.select_documents(fields, (docid,)))
         if docs:
             return docs[0]
 
@@ -87,22 +85,22 @@ def resize():
     global col_size
 
     info_win.height = 25
-    col_size = {'year': 4, 'rowid': 5, 'rating': 2, 'author': 30}
+    col_size = {'year': 4, 'docid': 5, 'rating': 2, 'author': 30}
     col_size['title'] = main_win.width - sum(col_size.values()) - 2 * len(col_size)
 
     update_main()
 
 
-def update_main(rowids=None):
-    if not rowids:
-        rowids = filter(None, (get_rowid(line) for line in main_buf))
-        if not rowids:
+def update_main(docids=None):
+    if not docids:
+        docids = filter(None, (get_docid(line) for line in main_buf))
+        if not docids:
             return
-    cur = ref.select_documents(headers, rowids)
-    docs = {doc['rowid']: str_document(doc) for doc in cur}
+    cur = ref.select_documents(headers, docids)
+    docs = {doc['docid']: str_document(doc) for doc in cur}
 
     for i, line in enumerate(main_buf):
-        id = get_rowid(line)
+        id = get_docid(line)
         if id in docs:
             main_buf[i] = docs[id]
 
@@ -126,9 +124,9 @@ def open_document():
 
 
 def add_document(fname):
-    rowid = ref.insert_document(fname)
-    if rowid:
-        doc = next(ref.select_documents(headers, (rowid,)))
+    docid = ref.insert_document(fname)
+    if docid:
+        doc = next(ref.select_documents(headers, (docid,)))
         main_buf[:0] = [str_document(doc)]
         main_win.cursor = (1, 0)
 
@@ -137,15 +135,15 @@ def delete_document(lineFrom, lineTo):
     if vim.current.buffer != main_buf:
         print 'Deletion is only possible from the main buffer'
         return
-    rowids = set()
+    docids = set()
     for line in main_buf[lineFrom - 1:lineTo]:
-        rowid = get_rowid(line)
-        ref.delete_document(rowid)
-        rowids.add(rowid)
+        docid = get_docid(line)
+        ref.delete_document(docid)
+        docids.add(docid)
 
     for i, line in enumerate(main_buf):
-        id = get_rowid(line)
-        if id in rowids:
+        id = get_docid(line)
+        if id in docids:
             del main_buf[i]
 
 
@@ -160,8 +158,7 @@ def insert_tag(tag):
     save_info(parse_info())
 
             
-headers = 'rowid', 'rating', 'author', 'title', 'year'
-tags = {}
+headers = 'docid', 'rating', 'author', 'title', 'year'
 tags = ref.get_tags()
 col_size = {}
 
@@ -180,7 +177,7 @@ c(':1winc w')
 
 resize()
 reload_main()
-ref.check_filenames()
+#ref.check_filenames()
 
 c('autocmd CursorMoved main python write_info(selected_document())')
 c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
