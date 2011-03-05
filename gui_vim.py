@@ -11,7 +11,7 @@ sys.path.append('/home/jure/devel/ref')
 import ref
 
 
-def search(query):
+def search_documents(query):
     global last_select_cmd
 
     if not query:
@@ -154,10 +154,6 @@ def delete_document(lineFrom, lineTo):
             del main_buf[i]
 
 
-def complete_tag(prefix):
-    return [tag for tag in tags if tag.startswith(prefix)]
-
-
 def insert_tag(tag):
     for i, line in enumerate(info_buf):
         if line.startswith('tags='):
@@ -203,12 +199,19 @@ c('map <c-o> :python open_document()<CR>')
 c('map <c-w>o <NOP>')
 c('map // :Search ')
 c('com Fetch py fetch_bibtex()')
-c('com -nargs=1 -complete=customlist,CompleteTag Tag py insert_tag("<args>")')
-c("com -nargs=? -complete=customlist,CompleteTag Search py search('''<args>''')")
-c('com -nargs=1 Order py order_documents("<args>")')
+c('com -nargs=1 -complete=customlist,Tag Tag py insert_tag("<args>")')
+c("com -nargs=? -complete=customlist,Tag Search py search_documents('''<args>''')")
+c('com -nargs=? -complete=customlist,Column Order py order_documents("<args>")')
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 
-c('''function! CompleteTag(ArgLead, CmdLine, CursorPos)
-    python c('return {}'.format(complete_tag(vim.eval('a:ArgLead'))))
+c('''function Tag(ArgLead, CmdLine, CursorPos)
+    python c('let xs = {}'.format(list(tags)))
+    return filter(xs, 'a:ArgLead == strpart(v:val, 0, strlen(a:ArgLead))')
 endfunction''')
+
+c('''function Column(ArgLead, CmdLine, CursorPos)
+    let xs = {}
+    return filter(xs, 'a:ArgLead == strpart(v:val, 0, strlen(a:ArgLead))')
+endfunction'''.format([h for h in headers]))
+
