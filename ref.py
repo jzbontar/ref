@@ -207,7 +207,7 @@ def parse_bibtex(bibtex):
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
-        d[k] = re.sub(r'[{}\\]', '', v)
+        d[k] = re.sub(r'[{}\\=]', '', v)
     d['author'] = ', '.join(a[:a.find(',')]
         for a in d['author'].split(' and '))
     return d
@@ -284,7 +284,7 @@ def extract_pdf(fname):
     title = None
     for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
         title = ' '.join(map(lambda xs: xs[2], group)).strip()
-        bad = ('abstract', 'introduction', 'relatedwork')
+        bad = ('abstract', 'introduction', 'relatedwork', 'originalpaper', 'bioinformatics')
         if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
             break
     return title, fulltext

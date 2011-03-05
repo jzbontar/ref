@@ -149,7 +149,7 @@ def delete_document(lineFrom, lineTo):
             del main_buf[i]
 
 
-def complete_tag(s):
+def complete_tag(prefix):
     return [tag for tag in tags if tag.startswith(prefix)]
 
 
