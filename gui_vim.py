@@ -18,7 +18,7 @@ def search_documents(query):
         reload_main()
         return
 
-    last_select_cmd = lambda: search(query)
+    last_select_cmd = lambda: search_documents(query)
     del main_buf[:]
     for field, docs in ref.search_documents(headers, query, order):
         docs = map(str_document, docs)
@@ -194,7 +194,7 @@ c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
 c('autocmd VimResized * python resize()')
 c('set cursorline')
 c('set wildmode=longest,list')
-c('map <c-x> :qa!<CR>')
+c('map q :qa!<CR>')
 c('map <c-o> :python open_document()<CR>')
 c('map <c-w>o <NOP>')
 c('map // :Search ')

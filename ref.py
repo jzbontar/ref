@@ -94,7 +94,7 @@ def select_documents(fields, docids=None, order='docid DESC'):
 
 def update_document(doc):
     filename = get_filename(doc)
-    if False and doc['filename'] != filename:
+    if doc['filename'] != filename:
         src = os.path.join(DOCUMENT_DIR, doc['filename'])
         dst = os.path.join(DOCUMENT_DIR, filename)
         os.rename(src, dst)
@@ -146,7 +146,7 @@ def delete_document(docid):
     doc = next(select_documents(('docid', 'filename'), (docid,)))
     with con:
         con.execute('DELETE FROM documents WHERE docid=?', (doc['docid'],))
-        con.execute('DELETE FROM fts WHERE docid=?', (doc['docid'],))
+        con.execute('DELETE FROM fulltext WHERE docid=?', (doc['docid'],))
         os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
 
 
