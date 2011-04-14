@@ -161,6 +161,14 @@ def insert_tag(tag):
     save_info(parse_info())
 
 
+def toggle_unread():
+    for i, line in enumerate(info_buf):
+        if line.startswith('rating='):
+            info_buf[i] = 'rating=' + ('' if info_buf[i].endswith('U') else 'U')
+    save_info(parse_info())
+    
+
+
 def order_documents(o):
     global order
 
@@ -196,6 +204,7 @@ c('set cursorline')
 c('set wildmode=longest,list')
 c('map q :qa!<CR>')
 c('map <c-o> :python open_document()<CR>')
+c('map <c-u> :python toggle_unread()<CR>')
 c('map <c-w>o <NOP>')
 c('map // :Search ')
 c('com Fetch py fetch_bibtex()')

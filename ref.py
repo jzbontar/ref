@@ -125,6 +125,7 @@ def insert_document(fname):
     doc = collections.defaultdict(str)
     doc['title'], doc['fulltext'] = extract_func(fname)
     doc['bibtex'] = fetch_bibtex(doc['title'])
+    doc['rating'] = 'U'
     doc.update(parse_bibtex(doc['bibtex']))
     
     with con:
