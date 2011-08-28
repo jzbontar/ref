@@ -124,6 +124,8 @@ def insert_document(fname):
 
     doc = collections.defaultdict(str)
     doc['title'], doc['fulltext'] = extract_func(fname)
+    if doc['title']:
+        doc['title'] = doc['title'][:127]
     doc['bibtex'] = fetch_bibtex(doc['title'])
     doc['rating'] = 'U'
     doc.update(parse_bibtex(doc['bibtex']))
@@ -191,7 +193,7 @@ def parse_bibtex(bibtex):
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
-        d[k] = re.sub(r'[{}\\=]', '', v)
+        d[k] = re.sub(r'["{}\\=]', '', v)
     d['author'] = ', '.join(a[:a.find(',')]
         for a in d['author'].split(' and '))
     return d

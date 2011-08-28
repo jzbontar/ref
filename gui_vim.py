@@ -88,7 +88,7 @@ def selected_document():
 def resize():
     global col_size
 
-    info_win.height = 25
+    info_win.height = 15
     col_size = {'year': 4, 'docid': 5, 'rating': 2, 'author': 30}
     col_size['title'] = main_win.width - sum(col_size.values()) - 2 * len(col_size)
 
@@ -135,7 +135,7 @@ def add_document(fname):
     if docid:
         doc = next(ref.select_documents(headers, (docid,)))
         main_buf[:0] = [str_document(doc)]
-        main_win.cursor = (1, 0)
+    main_win.cursor = (1, 0)
 
 
 def delete_document(lineFrom, lineTo):
