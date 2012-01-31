@@ -7,7 +7,6 @@ import sys
 import vim
 import collections
 
-sys.path.append('/home/jure/devel/ref')
 import ref
 
 
