@@ -18,9 +18,6 @@ import urllib2
 import HTMLParser
 
 
-BASE_DIR = os.path.expanduser('~/.ref')
-DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
-
 documents_fields = (
     ('docid', 'INTEGER PRIMARY KEY'), ('tags', 'TEXT'), ('title', 'TEXT'), 
     ('author', 'TEXT'), ('year', 'INTEGER'), ('rating', 'INTEGER'), 
@@ -187,8 +184,8 @@ def get_filename(doc):
         author = doc['author'].split(', ')[0] + ' et al.'
     else:
         author = doc['author']
-    fields = (author, doc['year'], doc['title'], str(doc['docid'])) 
-    filename = ' - '.join(re.sub(r'[^-\w, ]', '', f) for f in fields if f)
+    fields = (author, doc['year'], doc['title'], doc['docid']) 
+    filename = ' - '.join(re.sub(r'[^-\w, ]', '', str(f)) for f in fields if f)
     filename += os.path.splitext(doc['filename'])[1]
     return filename
 
@@ -307,8 +304,12 @@ def export_bib(fname):
     open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
 
 
-def init():
-    global con
+
+def init(base_dir=os.path.expanduser('~/.ref')):
+    global con, BASE_DIR, DOCUMENT_DIR
+
+    BASE_DIR = base_dir
+    DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
 
     for dir in (BASE_DIR, DOCUMENT_DIR):
         if not os.path.exists(dir):
