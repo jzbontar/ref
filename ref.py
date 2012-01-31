@@ -28,6 +28,16 @@ def import_dir(dir):
         insert_document(os.path.join(dir, base))
 
 
+def check_filenames():
+    filenames = set(os.listdir(DOCUMENT_DIR))
+    for row in con.execute('SELECT filename FROM documents'):
+        if row['filename'] not in filenames:
+            raise IOError('Filename not found ' + row['filename'])
+        filenames.remove(row['filename'])
+    for filename in filenames:
+        raise IOError('Filename not in database ' + filename)
+
+
 def create_test_data():
     import textwrap
     from random import randint, choice, sample, random
@@ -115,15 +125,13 @@ def insert_document(fname):
             return 
 
     ext = os.path.splitext(fname)[1]
-    fs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
-    if ext not in fs:
-        return None
-    extract_func = fs.get(ext, lambda fname: (None, None))
+    extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+    if ext not in extract_funs:
+        return
 
     doc = collections.defaultdict(str)
-    doc['title'], doc['fulltext'] = extract_func(fname)
-    if doc['title']:
-        doc['title'] = doc['title'][:127]
+    title, doc['fulltext'] = extract_funs[ext](fname)
+    doc['title'] = title[:127]
     doc['bibtex'] = fetch_bibtex(doc['title'])
     doc['rating'] = 'U'
     doc.update(parse_bibtex(doc['bibtex']))
@@ -178,19 +186,9 @@ def get_filename(doc):
     return filename
 
 
-def check_filenames():
-    filenames = set(os.listdir(DOCUMENT_DIR))
-    for row in con.execute('SELECT filename FROM documents'):
-        if row['filename'] not in filenames:
-            raise IOError('Filename not found ' + row['filename'])
-        filenames.remove(row['filename'])
-    for filename in filenames:
-        raise IOError('Filename not in database ' + filename)
-
-
 def parse_bibtex(bibtex):
     d = collections.defaultdict(str)
-    reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
+    reg = r'^\s*(title|author|year|journal)\s*=\s*{*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
         d[k] = re.sub(r'[\'"{}\\=]', '', v)
@@ -211,7 +209,7 @@ def extract_djvu(fname):
     title = re.match(r'(.*?)\n\n', fulltext, re.DOTALL).group(0)
     title = re.sub(r'\s+', ' ', title).strip()
     if len(title) > 100:
-        title = None
+        title = ''
     return title, fulltext
 
 
@@ -251,7 +249,7 @@ def extract_pdf(fname):
         text_size = size + text.startswith('<b>') * 0.5
         groups.append((text_size, list(group)))
 
-    title = None
+    title = ''
     for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
         title = ' '.join(map(lambda xs: xs[2], group)).strip()
         bad = ('abstract', 'introduction', 'relatedwork', 'originalpaper', 'bioinformatics')
@@ -298,9 +296,8 @@ unescape = HTMLParser.HTMLParser().unescape
 
 
 def export_bib(fname):
-    f = open(fname, 'w')
-    for row in con.execute('SELECT bibtex FROM documents'):
-        f.write(row['bibtex'] + '\n\n')
+    rows = con.execute('SELECT bibtex FROM documents')
+    open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
 
 
 for dir in (BASE_DIR, DOCUMENT_DIR):
