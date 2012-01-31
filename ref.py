@@ -120,6 +120,8 @@ def insert_document(fname):
 
     ext = os.path.splitext(fname)[1]
     fs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+    if ext not in fs:
+        return None
     extract_func = fs.get(ext, lambda fname: (None, None))
 
     doc = collections.defaultdict(str)
