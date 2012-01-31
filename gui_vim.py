@@ -138,6 +138,10 @@ def add_document(fname):
     main_win.cursor = (1, 0)
 
 
+def export_bib(fname):
+    ref.export_bib(fname)
+
+
 def delete_document(lineFrom, lineTo):
     if vim.current.buffer != main_buf:
         print 'Deletion is only possible from the main buffer'
@@ -212,6 +216,7 @@ c('com -nargs=1 -complete=customlist,Tag Tag py insert_tag("<args>")')
 c("com -nargs=? -complete=customlist,Tag Search py search_documents('''<args>''')")
 c('com -nargs=? -complete=customlist,Column Order py order_documents("<args>")')
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
+c('com -nargs=1 -complete=file Export py export_bib("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 
 c('''function Tag(ArgLead, CmdLine, CursorPos)

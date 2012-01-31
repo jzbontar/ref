@@ -340,6 +340,14 @@ def unescape(data):
     return re.sub(r"&#?[A-Za-z0-9]+?;", replace_entities, data)
 
 
+def export_bib(f):
+    f = open(f, 'w')
+    for row in con.execute('SELECT bibtex FROM documents'):
+        f.write(row['bibtex'])
+        f.write('\n\n')
+    f.close()
+
+
 for dir in (BASE_DIR, DOCUMENT_DIR):
     if not os.path.exists(dir):
         os.mkdir(dir)
