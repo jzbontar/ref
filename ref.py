@@ -73,7 +73,6 @@ def create_test_data():
             assert lastrowid == c.lastrowid
 
 
-
 def create_tables():
     with con:
         c = con.execute("SELECT rowid FROM sqlite_master WHERE type='table'")
@@ -108,10 +107,6 @@ def update_document(doc):
     
 def insert_document(fname):
     cleanup = []
-    if os.path.splitext(fname)[1] == '.7z':
-        fname, cleanup_func = extract_7z(fname)
-        cleanup.append(cleanup_func)
-
     for base2 in os.listdir(DOCUMENT_DIR):
         fname2 = os.path.join(DOCUMENT_DIR, base2)
         if filecmp.cmp(fname, fname2):
@@ -207,22 +202,6 @@ def get_tags():
     for row in con.execute('SELECT tags FROM documents'):
         tags.update(map(str.strip, row['tags'].split(';')))
     return tags
-
-
-def extract_7z(fname):
-    def cleanup():
-        shutil.rmtree(dir)
-
-    name = os.path.splitext(os.path.basename(fname))[0]
-    dir = tempfile.mkdtemp(prefix='ref.')
-    for pwd in ('ebooksclub.org', 'ebooksclub_org', 'gigapedia.com', 'library.nu'):
-        p = Popen(['7z', 'x', fname, '-y', '-p' + pwd, '-o' + dir], stdout=PIPE)
-        p.communicate()
-        if p.returncode == 0:
-            for base in os.listdir(dir):
-                if os.path.splitext(base)[0] == name:
-                    return os.path.join(dir, base), cleanup
-    raise Exception('Could not extract 7z file.')
 
 
 def extract_djvu(fname):
