@@ -129,18 +129,19 @@ def insert_document(fname):
     doc.update(parse_bibtex(doc['bibtex']))
     
     with con:
-        c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
-        lastrowid = c.lastrowid
-        c = con.execute('INSERT INTO documents DEFAULT VALUES')
-        assert c.lastrowid == lastrowid
+        ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
+        fs = ','.join(name for name, _ in documents_fields[1:])
+        vs = [doc[name] for name, _ in documents_fields[1:]]
+        qs = ','.join('?' * len(vs))
+
+        c = con.execute('INSERT INTO documents ({}) VALUES ({})'.format(fs, qs), vs)
+        assert c.lastrowid == ft_c.lastrowid
 
         doc['docid'] = c.lastrowid
-        doc['filename'] = fname
-        shutil.copy(fname, os.path.join(DOCUMENT_DIR, fname))
-        update_document(doc)
+        doc['filename'] = fname  # setup arguments for get_filename
+        doc['filename'] = get_filename(doc)
+        shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
 
-    for cleanup_func in cleanup:
-        cleanup_func()
     return doc['docid']
 
 
