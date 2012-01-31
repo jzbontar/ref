@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import urllib2
+import HTMLParser
 
 
 BASE_DIR = os.path.expanduser('~/.ref')
@@ -133,10 +134,10 @@ def insert_document(fname):
         c = con.execute('INSERT INTO documents DEFAULT VALUES')
         assert c.lastrowid == lastrowid
 
-    doc['docid'] = c.lastrowid
-    doc['filename'] = get_filename(doc)
-    shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
-    update_document(doc)
+        doc['docid'] = c.lastrowid
+        doc['filename'] = fname
+        shutil.copy(fname, os.path.join(DOCUMENT_DIR, fname))
+        update_document(doc)
 
     for cleanup_func in cleanup:
         cleanup_func()
@@ -172,7 +173,7 @@ def get_filename(doc):
         author = doc['author']
     fields = (author, doc['year'], doc['title'], str(doc['docid'])) 
     filename = ' - '.join(re.sub(r'[^-\w, ]', '', f) for f in fields if f)
-    filename += '.' + doc['filename'].split('.')[-1]
+    filename += os.path.splitext(doc['filename'])[1]
     return filename
 
 
@@ -261,8 +262,7 @@ def extract_pdf(fname):
 def fetch_bibtex(title):
     try:
         url = '/scholar?q=allintitle:' + urllib2.quote(title)
-        html = scholar_read(url)
-        match = re.search(r'<a href="(/scholar.bib[^"]+)', html)
+        match = re.search(r'<a href="(/scholar.bib[^"]+)', scholar_read(url))
         return scholar_read(match.group(1))
     except urllib2.HTTPError:
         return '@{{\n  title={}\n}}\n'.format(title)
@@ -280,7 +280,7 @@ def delay(n, interval):
     return decorator
 
 
-@delay(2, 2)
+@delay(2, 10)
 def scholar_read(url):
     id = ''.join(random.choice('0123456789abcdef') for i in range(16))
     cookie = 'GSP=ID={}:CF=4;'.format(id)
@@ -293,38 +293,13 @@ def striptags(html):
     return unescape(re.sub(r'<[^>]+>', '', html))
 
 
-def unescape_charref(ref):
-    name = ref[2:-1]
-    base = 10
-    if name.startswith("x"):
-        name = name[1:]
-        base = 16
-    return unichr(int(name, base)).encode('utf8')
+unescape = HTMLParser.HTMLParser().unescape
 
 
-def replace_entities(match):
-    ent = match.group()
-    if ent[1] == "#":
-        return unescape_charref(ent)
-
-    repl = htmlentitydefs.name2codepoint.get(ent[1:-1])
-    if repl is not None:
-        repl = unichr(repl).encode('utf8')
-    else:
-        repl = ent
-    return repl
-
-
-def unescape(data):
-    return re.sub(r"&#?[A-Za-z0-9]+?;", replace_entities, data)
-
-
-def export_bib(f):
-    f = open(f, 'w')
+def export_bib(fname):
+    f = open(fname, 'w')
     for row in con.execute('SELECT bibtex FROM documents'):
-        f.write(row['bibtex'])
-        f.write('\n\n')
-    f.close()
+        f.write(row['bibtex'] + '\n\n')
 
 
 for dir in (BASE_DIR, DOCUMENT_DIR):
