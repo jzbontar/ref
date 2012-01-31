@@ -17,8 +17,8 @@ import time
 import urllib2
 
 
-BASE_DIR = os.path.expanduser('~/.ref/')
-DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents/')
+BASE_DIR = os.path.expanduser('~/.ref')
+DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
 
 
 def import_dir(dir):
@@ -135,11 +135,12 @@ def insert_document(fname):
         lastrowid = c.lastrowid
         c = con.execute('INSERT INTO documents DEFAULT VALUES')
         assert c.lastrowid == lastrowid
+
     doc['docid'] = c.lastrowid
-    doc['filename'] = fname
     doc['filename'] = get_filename(doc)
     shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
     update_document(doc)
+
     for cleanup_func in cleanup:
         cleanup_func()
     return doc['docid']
@@ -193,7 +194,7 @@ def parse_bibtex(bibtex):
     reg = r'^\s*(title|author|year|journal)={*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
-        d[k] = re.sub(r'["{}\\=]', '', v)
+        d[k] = re.sub(r'[\'"{}\\=]', '', v)
     d['author'] = ', '.join(a[:a.find(',')]
         for a in d['author'].split(' and '))
     return d
@@ -277,14 +278,13 @@ def extract_pdf(fname):
 
 
 def fetch_bibtex(title):
-    if not title:
-        return ''
-    url = '/scholar?q=allintitle:' + urllib2.quote(title)
-    html = scholar_read(url)
-    match = re.search(r'<a href="(/scholar.bib[^"]+)', html)
-    if not match:
-        return ''
-    return scholar_read(match.group(1))
+    try:
+        url = '/scholar?q=allintitle:' + urllib2.quote(title)
+        html = scholar_read(url)
+        match = re.search(r'<a href="(/scholar.bib[^"]+)', html)
+        return scholar_read(match.group(1))
+    except urllib2.HTTPError:
+        return '@{{\n  title={}\n}}\n'.format(title)
 
 
 def delay(n, interval):
@@ -355,9 +355,3 @@ con.text_factory = str
 con.execute("ATTACH '{}' as fulltext".format(os.path.join(BASE_DIR, 'fulltext.sqlite3')))
 
 create_tables()
-
-if __name__ == '__main__':
-    pass
-    #extract_chm('/home/jure/tmp/uM7TZdWNFGIk.chm')
-    import_dir('/home/jure/.ref.old/documents')
-    #create_test_data()
