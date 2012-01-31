@@ -21,6 +21,13 @@ import HTMLParser
 BASE_DIR = os.path.expanduser('~/.ref')
 DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
 
+documents_fields = (
+    ('docid', 'INTEGER PRIMARY KEY'), ('tags', 'TEXT'), ('title', 'TEXT'), 
+    ('author', 'TEXT'), ('year', 'INTEGER'), ('rating', 'INTEGER'), 
+    ('journal', 'TEXT'), ('filename', 'TEXT'), ('notes', 'TEXT'), 
+    ('bibtex', 'TEXT')
+)
+
 
 def import_dir(dir):
     for base in os.listdir(dir):
@@ -300,20 +307,15 @@ def export_bib(fname):
     open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
 
 
-for dir in (BASE_DIR, DOCUMENT_DIR):
-    if not os.path.exists(dir):
-        os.mkdir(dir)
+def init():
+    global con
 
-documents_fields = (
-    ('docid', 'INTEGER PRIMARY KEY'), ('tags', 'TEXT'), ('title', 'TEXT'), 
-    ('author', 'TEXT'), ('year', 'INTEGER'), ('rating', 'INTEGER'), 
-    ('journal', 'TEXT'), ('filename', 'TEXT'), ('notes', 'TEXT'), 
-    ('bibtex', 'TEXT')
-)
- 
-con = sqlite3.connect(os.path.join(BASE_DIR, 'documents.sqlite3'))
-con.row_factory = sqlite3.Row
-con.text_factory = str
-con.execute("ATTACH '{}' as fulltext".format(os.path.join(BASE_DIR, 'fulltext.sqlite3')))
-
-create_tables()
+    for dir in (BASE_DIR, DOCUMENT_DIR):
+        if not os.path.exists(dir):
+            os.mkdir(dir)
+     
+    con = sqlite3.connect(os.path.join(BASE_DIR, 'documents.sqlite3'))
+    con.row_factory = sqlite3.Row
+    con.text_factory = str
+    con.execute("ATTACH '{}' as fulltext".format(os.path.join(BASE_DIR, 'fulltext.sqlite3')))
+    create_tables()

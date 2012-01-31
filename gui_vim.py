@@ -178,6 +178,8 @@ def order_documents(o):
     order = o
     last_select_cmd()
 
+ref.init()
+
 order = 'docid DESC'
 headers = 'docid', 'rating', 'author', 'title', 'year'
 tags = ref.get_tags()
