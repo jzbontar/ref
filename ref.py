@@ -120,6 +120,8 @@ def insert_document(fname):
 
     ext = os.path.splitext(fname)[1]
     fs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+    if ext not in fs:
+        return None
     extract_func = fs.get(ext, lambda fname: (None, None))
 
     doc = collections.defaultdict(str)
@@ -336,6 +338,14 @@ def replace_entities(match):
 
 def unescape(data):
     return re.sub(r"&#?[A-Za-z0-9]+?;", replace_entities, data)
+
+
+def export_bib(f):
+    f = open(f, 'w')
+    for row in con.execute('SELECT bibtex FROM documents'):
+        f.write(row['bibtex'])
+        f.write('\n\n')
+    f.close()
 
 
 for dir in (BASE_DIR, DOCUMENT_DIR):
