@@ -3,6 +3,7 @@ import tempfile
 import shutil
 import os
 import re
+import filecmp
 from pprint import pprint
 
 import ref
@@ -199,9 +200,11 @@ class TestRef(unittest.TestCase):
         self.assertEqual(title, 'Factorization Meets the Neighborhood: a Multifaceted Collaborative Filtering Model')
         self.assertEqual(fulltext, open('data/kdd08koren.txt').read())
 
-        
-
+    def test_export_bib(self):
+        fname = os.path.join(ref.BASE_DIR, 'export.bib')
+        ref.export_bib(fname)
+        self.assertTrue(filecmp.cmp(fname, 'data/export.bib'))
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_extract_pdf')
+    unittest.main(defaultTest='TestRef.test_export_bib')
     #unittest.main()
