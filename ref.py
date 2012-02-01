@@ -170,6 +170,7 @@ def insert_document(fname, fetch=True):
 def delete_document(docid):
     doc = next(select_documents(('docid', 'filename'), (docid,)))
     try:
+        con.execute('BEGIN')
         con.execute('DELETE FROM documents WHERE docid=?', (doc['docid'],))
         con.execute('DELETE FROM fulltext WHERE docid=?', (doc['docid'],))
         os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
