@@ -158,8 +158,6 @@ def insert_document(fname, fetch=True):
         doc['filename'] = fname  # setup arguments for get_filename
         doc['filename'] = get_filename(doc)
         update_document(doc)
-
-        # If this fails, the insert_document transaction is rolled back
         shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
         con.execute('RELEASE SAVEPOINT insert_document')
     except:
@@ -307,7 +305,7 @@ def scholar_read(url):
     cookie = 'GSP=ID={}:CF=4;'.format(id)
     h = {'User-agent': 'Mozilla/5.0', 'Cookie': cookie}
     req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib2.urlopen(req).read().decode('utf8'))
+    return unescape(urllib2.urlopen(req).read().decode('utf8')).encode('utf8')
 
 
 def striptags(html):
