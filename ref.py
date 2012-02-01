@@ -121,19 +121,22 @@ def update_document(doc):
     con.execute('UPDATE documents SET {} WHERE docid=?'.format(fs), vs)
     con.execute('RELEASE SAVEPOINT update_document')
         
+class DuplicateError(Exception):
+    pass
     
 def insert_document(fname):
-    cleanup = []
+    if not os.path.isfile(fname):
+        raise IOError('{} is not a file'.format(fname))
+
     for base2 in os.listdir(DOCUMENT_DIR):
         fname2 = os.path.join(DOCUMENT_DIR, base2)
         if filecmp.cmp(fname, fname2):
-            print 'Duplicate ({})?'.format(fname2)
-            return 
+            raise DuplicateError(base2)
 
     ext = os.path.splitext(fname)[1]
     extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
     if ext not in extract_funs:
-        return
+        raise ValueError('Unsupported file type {}'.format(ext))
 
     doc = collections.defaultdict(str)
     title, doc['fulltext'] = extract_funs[ext](fname)
