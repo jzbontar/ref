@@ -236,7 +236,7 @@ def fetch_bibtex(title):
         if not match:
             raise ValueError('Title not found')
         return scholar_read(match.group(1))
-    except urllib2.HTTPError:
+    except (urllib2.HTTPError, urllib2.URLError):
         return '@{{\n  title={}\n}}\n'.format(title)
 
 
