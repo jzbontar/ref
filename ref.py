@@ -42,53 +42,6 @@ def check_filenames():
         raise IOError('Filename not in database ' + filename)
 
 
-def create_test_data():
-    import textwrap
-    from random import randint, choice, sample, random
-
-    def r(n, m, words=re.sub('\W+', ' ', open('tolstoy.txt').read()).split()):
-        return ' '.join(choice(words) for i in range(randint(n, m)))
-
-    all_tags = [r(1, 2) for i in range(100)]
-    con.execute('BEGIN')
-    for i in range(10000):
-        print i
-
-        title = r(5, 10)
-        author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
-        year = str(randint(1800, 2000))
-        journal = r(1, 5)
-        rating = str(randint(1, 10))
-        filename = r(10, 15)
-        q = random()
-        if q < 0.1:
-            fulltext = r(50000, 200000)
-        elif q < 0.8:
-            fulltext = r(1000, 15000)
-        else:
-            fulltext = ''
-        notes = textwrap.fill(r(0, 100))
-        tags = '; '.join(sample(all_tags, randint(0, 3)))
-        o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
-        bibtex = '''@book{{foo
-title={},
-author={},
-year={},
-journal={},
-{}
-}}'''.format(title, author, year, journal, o)
-        if random() < 0.1:
-            title = author = year = journal = bibtex = None
-        
-        c = con.execute('INSERT INTO fulltext VALUES (?)', (fulltext,))
-        lastrowid = c.lastrowid
-        c = con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?)',
-            (None, tags, title, author, year, rating, journal, filename, 
-            notes, bibtex))
-        assert lastrowid == c.lastrowid
-    con.execute('COMMIT')
-
-
 def create_tables():
     c = con.execute("SELECT rowid FROM sqlite_master WHERE type='table'")
     if len(c.fetchall()) == 0:

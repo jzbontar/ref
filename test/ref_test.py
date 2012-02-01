@@ -4,11 +4,14 @@ import shutil
 import os
 import re
 import filecmp
+import textwrap
+from time import time
+from random import randint, choice, sample, random
 from pprint import pprint
 
 import ref
 
-class TestRef(unittest.TestCase):
+class Test(unittest.TestCase):
     def setUp(self):
         self.tempdir = tempfile.mkdtemp()
         base_dir = os.path.join(self.tempdir, 'ref')
@@ -205,7 +208,83 @@ class TestRef(unittest.TestCase):
         fname = os.path.join(ref.BASE_DIR, 'export.bib')
         ref.export_bib(fname)
         self.assertTrue(filecmp.cmp(fname, 'data/export.bib'))
-        
+
+
+class TestPerformance(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.tempdir = tempfile.mkdtemp()
+        base_dir = os.path.join(cls.tempdir, 'ref')
+        ref.init(base_dir)
+
+        # generate random words
+        def r(n, m, words=re.sub('\W+', ' ', open('data/kdd08koren.txt').read()).split()):
+            return ' '.join(choice(words) for i in range(randint(n, m)))
+
+        all_tags = [r(1, 2) for i in range(100)]
+        ref.con.execute('BEGIN')
+        for i in range(1000):
+            title = r(5, 10)
+            author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
+            year = str(randint(1800, 2000))
+            journal = r(1, 5)
+            rating = str(randint(1, 10))
+            q = random()
+            if q < 0.2:
+                fulltext = r(50000, 200000)
+            elif q < 0.8:
+                fulltext = r(1000, 15000)
+            else:
+                fulltext = ''
+            notes = textwrap.fill(r(0, 100))
+            tags = '; '.join(sample(all_tags, randint(0, 3)))
+            o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
+            bibtex = '''@book{{foo\n title={},\n author={},\n year={},\n journal={},\n {}}}\n'''.format(
+                title, author, year, journal, o)
+            if random() < 0.1:
+                title = author = year = journal = bibtex = ''
+
+            c = ref.con.execute('INSERT INTO fulltext VALUES (?)', (fulltext,))
+            lastrowid = c.lastrowid
+            doc = {'author': author, 'year': year, 'title': title, 'docid': lastrowid, 'filename': ''}
+            filename = ref.get_filename(doc)
+            c = ref.con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?)',
+                (None, tags, title, author, year, rating, journal, filename,
+                notes, bibtex))
+            assert lastrowid == c.lastrowid
+        ref.con.execute('COMMIT')
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.tempdir)
+
+    def test_select_documents(self):
+        t = time()
+        for i in range(100):
+            ref.select_documents(['docid'], docids=[i])
+        self.assertLess(time() - t, 0.2)
+
+    def test_update_document(self):
+        t = time()
+        for doc in map(dict, ref.select_documents('*', docids=range(100))):
+            doc['notes'] += 'foo bar baz'
+            ref.update_document(doc)
+        self.assertLess(time() - t, 0.2)
+
+    def test_insert_document(self):
+        t = time()
+        ref.insert_document('data/kdd08koren.pdf', fetch=False)
+        ref.insert_document('data/ref/documents/Paterek - 2007 - Improving regularized singular value decomposition for collaborative filtering - 1.pdf', fetch=False)
+        ref.insert_document('data/ref/documents/Yu et al - 2010 - Feature engineering and classifier ensemble for KDD cup 2010 - 2.pdf', fetch=False)
+        self.assertLess(time() - t, 1)
+
+    def test_search_documents(self):
+        t = time()
+        for query in open('data/kdd08koren.txt').read().split()[:100]:
+            ref.search_documents('*', query)
+        self.assertLess(time() - t, 1)
+
 if __name__ == '__main__':
-    #unittest.main(defaultTest='TestRef.test_export_bib')
-    unittest.main()
+    #unittest.main(defaultTest='TestPerformance', verbosity=2)
+    #unittest.main()
+    unittest.main(defaultTest='Test')
