@@ -90,13 +90,11 @@ journal={},
 
 
 def create_tables():
-    con.execute('BEGIN')
     c = con.execute("SELECT rowid FROM sqlite_master WHERE type='table'")
     if len(c.fetchall()) == 0:
         fields = ','.join(name + ' ' + type for name, type in documents_fields)
         con.execute('CREATE TABLE documents ({})'.format(fields))
         con.execute('CREATE VIRTUAL TABLE fulltext.fulltext USING fts4')
-    con.execute('COMMIT')
 
 
 def select_documents(fields, docids=None, order='docid DESC'):
@@ -117,14 +115,18 @@ def update_document(doc):
 
     fs = ','.join(name + '=?' for name, _ in documents_fields[1:])
     vs = [doc[name] for name, _ in documents_fields[1:]] + [doc['docid']]
-    con.execute('SAVEPOINT update_document')
-    con.execute('UPDATE documents SET {} WHERE docid=?'.format(fs), vs)
-    con.execute('RELEASE SAVEPOINT update_document')
+    try:
+        con.execute('SAVEPOINT update_document')
+        con.execute('UPDATE documents SET {} WHERE docid=?'.format(fs), vs)
+        con.execute('RELEASE SAVEPOINT update_document')
+    except:
+        con.execute('ROLLBACK TO update_document')
+        raise
         
 class DuplicateError(Exception):
     pass
     
-def insert_document(fname):
+def insert_document(fname, fetch=True):
     if not os.path.isfile(fname):
         raise IOError('{} is not a file'.format(fname))
 
@@ -141,34 +143,42 @@ def insert_document(fname):
     doc = collections.defaultdict(str)
     title, doc['fulltext'] = extract_funs[ext](fname)
     doc['title'] = title[:127]
-    doc['bibtex'] = fetch_bibtex(doc['title'])
     doc['rating'] = 'U'
-    doc.update(parse_bibtex(doc['bibtex']))
+    if fetch:
+        doc['bibtex'] = fetch_bibtex(doc['title'])
+        doc.update(parse_bibtex(doc['bibtex']))
     
-    con.execute('SAVEPOINT insert_document')
-    ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
-    c = con.execute('INSERT INTO documents DEFAULT VALUES')
-    assert c.lastrowid == ft_c.lastrowid
+    try:
+        con.execute('SAVEPOINT insert_document')
+        ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
+        c = con.execute('INSERT INTO documents DEFAULT VALUES')
+        assert c.lastrowid == ft_c.lastrowid
 
-    doc['docid'] = c.lastrowid
-    doc['filename'] = fname  # setup arguments for get_filename
-    doc['filename'] = get_filename(doc)
-    update_document(doc)
+        doc['docid'] = c.lastrowid
+        doc['filename'] = fname  # setup arguments for get_filename
+        doc['filename'] = get_filename(doc)
+        update_document(doc)
 
-    # If this fails, the insert_document transaction is rolled back
-    shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
-    con.execute('RELEASE SAVEPOINT insert_document')
+        # If this fails, the insert_document transaction is rolled back
+        shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
+        con.execute('RELEASE SAVEPOINT insert_document')
+    except:
+        con.execute('ROLLBACK TO insert_document')
+        raise
 
     return doc['docid']
 
 
 def delete_document(docid):
     doc = next(select_documents(('docid', 'filename'), (docid,)))
-    con.execute('BEGIN')
-    con.execute('DELETE FROM documents WHERE docid=?', (doc['docid'],))
-    con.execute('DELETE FROM fulltext WHERE docid=?', (doc['docid'],))
-    os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
-    con.execute('COMMIT')
+    try:
+        con.execute('DELETE FROM documents WHERE docid=?', (doc['docid'],))
+        con.execute('DELETE FROM fulltext WHERE docid=?', (doc['docid'],))
+        os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+        con.execute('COMMIT')
+    except:
+        con.execute('ROLLBACK')
+        raise
 
 
 def search_documents(fields, query, order='docid DESC'):
@@ -291,7 +301,7 @@ def delay(n, interval):
     return decorator
 
 
-@delay(2, 10)
+@delay(2, 3)
 def scholar_read(url):
     id = ''.join(random.choice('0123456789abcdef') for i in range(16))
     cookie = 'GSP=ID={}:CF=4;'.format(id)
@@ -310,7 +320,6 @@ unescape = HTMLParser.HTMLParser().unescape
 def export_bib(fname):
     rows = con.execute('SELECT bibtex FROM documents')
     open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
-
 
 
 def init(base_dir=os.path.expanduser('~/.ref')):
