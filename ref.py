@@ -211,8 +211,7 @@ def parse_bibtex(bibtex):
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
     for k, v in d.items():
         d[k] = re.sub(r'[\'"{}\\=]', '', v)
-    d['author'] = ', '.join(a[:a.find(',')]
-        for a in d['author'].split(' and '))
+    d['author'] = ', '.join(a.split(',')[0] for a in d['author'].split(' and '))
     if 'journal' not in d:
         d['journal'] = d.get('booktitle', '')
     return d
