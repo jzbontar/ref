@@ -117,7 +117,7 @@ class Test(unittest.TestCase):
         with self.assertRaises(IOError):
             ref.insert_document('data')
         with self.assertRaises(ValueError):
-            ref.insert_document('ref_test.py')
+            ref.insert_document('test_ref.py')
 
     def ref_status(self):
         return (
