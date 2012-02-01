@@ -196,11 +196,11 @@ def search_documents(fields, query, order='docid DESC'):
 
 def get_filename(doc):
     if doc['author'].count(', ') > 2:
-        author = doc['author'].split(', ')[0] + ' et al.'
+        author = doc['author'].split(', ')[0] + ' et al'
     else:
         author = doc['author']
     fields = (author, doc['year'], doc['title'], doc['docid']) 
-    filename = ' - '.join(re.sub(r'[^-\w, ]', '', str(f)) for f in fields if f)
+    filename = ' - '.join(re.sub(r'[^-\w,. ]', '', str(f)) for f in fields if f)
     filename += os.path.splitext(doc['filename'])[1]
     return filename
 

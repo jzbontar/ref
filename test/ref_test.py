@@ -157,7 +157,7 @@ class TestRef(unittest.TestCase):
         self.assertDictEqual(search('chang'), 
             {'author': [2], 'fulltext': [2], 'journal': [], 'notes': [], 'tags': [], 'title': []})
         
-        doc = dict(self.documents[1])
+        doc = self.documents[1]
         doc['author'] = doc['journal'] = doc['notes'] = doc['tags'] = doc['title'] = 'foo'
         ref.update_document(doc)
         self.assertDictEqual(search('foo'),
@@ -167,7 +167,17 @@ class TestRef(unittest.TestCase):
         self.assertDictEqual(search('feature'),
             {'author': [], 'fulltext': [2], 'journal': [], 'notes': [], 'tags': [], 'title': [2]})
 
+    def test_get_filename(self):
+        doc = self.documents[1]
+        self.assertEqual(ref.get_filename(doc), 
+            'Paterek - 2007 - Improving regularized singular value decomposition for collaborative filtering - 1.pdf')
+
+        doc['author'] = 'foo, bar, baz, foobar, qux'
+        doc['year'] = 42
+        doc['title'] = 'Fo!@#$%^&*()+o'
+        self.assertEqual(ref.get_filename(doc), 'foo et al - 42 - Foo - 1.pdf')
+
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_search_documents')
+    unittest.main(defaultTest='TestRef.test_get_filename')
     #unittest.main()
