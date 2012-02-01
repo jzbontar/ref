@@ -194,7 +194,14 @@ class TestRef(unittest.TestCase):
         doc['tags'] = 'tag1;tag2;space tag'
         self.assertSetEqual(ref.get_tags(), {'tag1', 'tag2', 'space tag'})
 
+    def test_extract_pdf(self):
+        title, fulltext = ref.extract_pdf('data/kdd08koren.pdf')
+        self.assertEqual(title, 'Factorization Meets the Neighborhood: a Multifaceted Collaborative Filtering Model')
+        self.assertEqual(fulltext, open('data/kdd08koren.txt').read())
+
+        
+
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_get_tags')
+    unittest.main(defaultTest='TestRef.test_extract_pdf')
     #unittest.main()
