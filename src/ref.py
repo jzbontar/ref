@@ -97,6 +97,8 @@ def insert_document(fname, fetch=True):
     doc['rating'] = 'U'
     if fetch:
         doc['bibtex'] = fetch_bibtex(doc['title'])
+        if not doc['bibtex']:
+            doc['bibtex'] = '@{{\n  title={}\n}}\n'.format(doc['title'])
         doc.update(parse_bibtex(doc['bibtex']))
     
     try:
@@ -233,11 +235,9 @@ def fetch_bibtex(title):
     try:
         url = '/scholar?q=allintitle:' + urllib2.quote(title)
         match = re.search(r'<a href="(/scholar.bib[^"]+)', scholar_read(url))
-        if not match:
-            raise ValueError('Title not found')
         return scholar_read(match.group(1))
-    except (urllib2.HTTPError, urllib2.URLError):
-        return '@{{\n  title={}\n}}\n'.format(title)
+    except (urllib2.HTTPError, urllib2.URLError, AttributeError):
+        return
 
 
 def delay(n, interval):

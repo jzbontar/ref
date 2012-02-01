@@ -119,6 +119,9 @@ def reload_main():
 def fetch_bibtex():
     doc = parse_info()
     doc['bibtex'] = ref.fetch_bibtex(doc['title'])
+    if not doc['bibtex']:
+        print 'Fetch failed'
+        return
     doc.update(ref.parse_bibtex(doc['bibtex']))
     save_info(doc)
     write_info(doc)
