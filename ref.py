@@ -297,7 +297,7 @@ def scholar_read(url):
     cookie = 'GSP=ID={}:CF=4;'.format(id)
     h = {'User-agent': 'Mozilla/5.0', 'Cookie': cookie}
     req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib2.urlopen(req).read().decode('utf8').encode('utf8'))
+    return unescape(urllib2.urlopen(req).read().decode('utf8'))
 
 
 def striptags(html):
