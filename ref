@@ -1,0 +1,3 @@
+#! /bin/sh
+
+vim -c "python from gui_vim import *"
