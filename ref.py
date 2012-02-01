@@ -282,6 +282,8 @@ def fetch_bibtex(title):
     try:
         url = '/scholar?q=allintitle:' + urllib2.quote(title)
         match = re.search(r'<a href="(/scholar.bib[^"]+)', scholar_read(url))
+        if not match:
+            raise ValueError('Title not found')
         return scholar_read(match.group(1))
     except urllib2.HTTPError:
         return '@{{\n  title={}\n}}\n'.format(title)
