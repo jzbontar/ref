@@ -27,5 +27,6 @@ setup(name='ref',
     url='https://bitbucket.org/jzbontar/ref/',
     description='A usable reference manager.',
     py_modules=['ref', 'gui_vim'],
-    scripts=['ref'],
+    package_dir={'': 'src'},
+    scripts=['src/ref'],
     cmdclass={'test': TestCommand})

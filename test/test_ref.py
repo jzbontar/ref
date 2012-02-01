@@ -5,10 +5,12 @@ import os
 import re
 import filecmp
 import textwrap
+import sys
 from time import time
 from random import randint, choice, sample, random
 from pprint import pprint
 
+sys.path.append('../src')
 import ref
 
 class Test(unittest.TestCase):
