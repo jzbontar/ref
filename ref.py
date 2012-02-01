@@ -220,7 +220,7 @@ def parse_bibtex(bibtex):
 def get_tags():
     tags = set()
     for row in con.execute('SELECT tags FROM documents'):
-        tags.update(map(str.strip, row['tags'].split(';')))
+        tags.update(tag for tag in row['tags'].split(';') if tag)
     return tags
 
 

@@ -192,7 +192,8 @@ class TestRef(unittest.TestCase):
     def test_get_tags(self):
         doc = self.documents[1]
         self.assertSetEqual(ref.get_tags(), set()) 
-        doc['tags'] = 'tag1;tag2;space tag'
+        doc['tags'] = 'tag1;tag2;space tag;;;'
+        ref.update_document(doc)
         self.assertSetEqual(ref.get_tags(), {'tag1', 'tag2', 'space tag'})
 
     def test_extract_pdf(self):
@@ -206,5 +207,5 @@ class TestRef(unittest.TestCase):
         self.assertTrue(filecmp.cmp(fname, 'data/export.bib'))
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_export_bib')
-    #unittest.main()
+    #unittest.main(defaultTest='TestRef.test_export_bib')
+    unittest.main()
