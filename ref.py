@@ -50,52 +50,53 @@ def create_test_data():
         return ' '.join(choice(words) for i in range(randint(n, m)))
 
     all_tags = [r(1, 2) for i in range(100)]
-    with con:
-        for i in range(10000):
-            print i
+    con.execute('BEGIN')
+    for i in range(10000):
+        print i
 
-            title = r(5, 10)
-            author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
-            year = str(randint(1800, 2000))
-            journal = r(1, 5)
-            rating = str(randint(1, 10))
-            filename = r(10, 15)
-            q = random()
-            if q < 0.1:
-                fulltext = r(50000, 200000)
-            elif q < 0.8:
-                fulltext = r(1000, 15000)
-            else:
-                fulltext = ''
-            notes = textwrap.fill(r(0, 100))
-            tags = '; '.join(sample(all_tags, randint(0, 3)))
-            o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
-            bibtex = '''@book{{foo
-  title={},
-  author={},
-  year={},
-  journal={},
-  {}
+        title = r(5, 10)
+        author = ' and '.join(r(1, 2) for _ in range(randint(1, 5)))
+        year = str(randint(1800, 2000))
+        journal = r(1, 5)
+        rating = str(randint(1, 10))
+        filename = r(10, 15)
+        q = random()
+        if q < 0.1:
+            fulltext = r(50000, 200000)
+        elif q < 0.8:
+            fulltext = r(1000, 15000)
+        else:
+            fulltext = ''
+        notes = textwrap.fill(r(0, 100))
+        tags = '; '.join(sample(all_tags, randint(0, 3)))
+        o = '\n  '.join(r(1, 1) + '=' + r(1, 5) for i in range(randint(0, 6)))
+        bibtex = '''@book{{foo
+title={},
+author={},
+year={},
+journal={},
+{}
 }}'''.format(title, author, year, journal, o)
-            if random() < 0.1:
-                title = author = year = journal = bibtex = None
-            
-            c = con.execute('INSERT INTO fulltext VALUES (?)', (fulltext,))
-            lastrowid = c.lastrowid
-            c = con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?)',
-                (None, tags, title, author, year, rating, journal, filename, 
-                notes, bibtex))
-            assert lastrowid == c.lastrowid
+        if random() < 0.1:
+            title = author = year = journal = bibtex = None
+        
+        c = con.execute('INSERT INTO fulltext VALUES (?)', (fulltext,))
+        lastrowid = c.lastrowid
+        c = con.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?)',
+            (None, tags, title, author, year, rating, journal, filename, 
+            notes, bibtex))
+        assert lastrowid == c.lastrowid
+    con.execute('COMMIT')
 
 
 def create_tables():
-    with con:
-        c = con.execute("SELECT rowid FROM sqlite_master WHERE type='table'")
-        if len(c.fetchall()) > 0:
-            return
+    con.execute('BEGIN')
+    c = con.execute("SELECT rowid FROM sqlite_master WHERE type='table'")
+    if len(c.fetchall()) == 0:
         fields = ','.join(name + ' ' + type for name, type in documents_fields)
         con.execute('CREATE TABLE documents ({})'.format(fields))
         con.execute('CREATE VIRTUAL TABLE fulltext.fulltext USING fts4')
+    con.execute('COMMIT')
 
 
 def select_documents(fields, docids=None, order='docid DESC'):
@@ -116,8 +117,9 @@ def update_document(doc):
 
     fs = ','.join(name + '=?' for name, _ in documents_fields[1:])
     vs = [doc[name] for name, _ in documents_fields[1:]] + [doc['docid']]
-    with con:
-        con.execute('UPDATE documents SET {} WHERE docid=?'.format(fs), vs)
+    con.execute('SAVEPOINT update_document')
+    con.execute('UPDATE documents SET {} WHERE docid=?'.format(fs), vs)
+    con.execute('RELEASE SAVEPOINT update_document')
         
     
 def insert_document(fname):
@@ -140,29 +142,30 @@ def insert_document(fname):
     doc['rating'] = 'U'
     doc.update(parse_bibtex(doc['bibtex']))
     
-    with con:
-        doc['filename'] = fname  # setup arguments for get_filename
-        doc['filename'] = get_filename(doc)
+    con.execute('SAVEPOINT insert_document')
+    ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
+    c = con.execute('INSERT INTO documents DEFAULT VALUES')
+    assert c.lastrowid == ft_c.lastrowid
 
-        ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
-        fs = ','.join(name for name, _ in documents_fields[1:])
-        vs = [doc[name] for name, _ in documents_fields[1:]]
-        qs = ','.join('?' * len(vs))
-        c = con.execute('INSERT INTO documents ({}) VALUES ({})'.format(fs, qs), vs)
-        assert c.lastrowid == ft_c.lastrowid
+    doc['docid'] = c.lastrowid
+    doc['filename'] = fname  # setup arguments for get_filename
+    doc['filename'] = get_filename(doc)
+    update_document(doc)
 
-        doc['docid'] = c.lastrowid
-        shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
+    # If this fails, the insert_document transaction is rolled back
+    shutil.copy(fname, os.path.join(DOCUMENT_DIR, doc['filename']))
+    con.execute('RELEASE SAVEPOINT insert_document')
 
     return doc['docid']
 
 
 def delete_document(docid):
     doc = next(select_documents(('docid', 'filename'), (docid,)))
-    with con:
-        con.execute('DELETE FROM documents WHERE docid=?', (doc['docid'],))
-        con.execute('DELETE FROM fulltext WHERE docid=?', (doc['docid'],))
-        os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+    con.execute('BEGIN')
+    con.execute('DELETE FROM documents WHERE docid=?', (doc['docid'],))
+    con.execute('DELETE FROM fulltext WHERE docid=?', (doc['docid'],))
+    os.remove(os.path.join(DOCUMENT_DIR, doc['filename']))
+    con.execute('COMMIT')
 
 
 def search_documents(fields, query, order='docid DESC'):
@@ -316,6 +319,7 @@ def init(base_dir=os.path.expanduser('~/.ref')):
             os.mkdir(dir)
      
     con = sqlite3.connect(os.path.join(BASE_DIR, 'documents.sqlite3'))
+    con.isolation_level = None
     con.row_factory = sqlite3.Row
     con.text_factory = str
     con.execute("ATTACH '{}' as fulltext".format(os.path.join(BASE_DIR, 'fulltext.sqlite3')))
