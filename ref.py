@@ -1,5 +1,3 @@
-#! /usr/bin/env python2
-
 from subprocess import Popen, PIPE
 import collections
 import filecmp
