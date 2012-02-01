@@ -25,7 +25,7 @@ class TestRef(unittest.TestCase):
                  'tags': '',
                  'title': 'Improving regularized singular value decomposition for collaborative filtering',
                  'year': 2007},
-             2: {'author': 'Yu, Lo, Hsieh, Lou, McKenzie, Chou, Chung, Ho, Chang, Wei, other',
+             2: {'author': 'Yu, Lo, Hsieh, Lou, McKenzie, Chou, Chung, Ho, Chang, Wei, others',
                  'bibtex': '@inproceedings{yu2010feature,\n  title={Feature engineering and classifier ensemble for KDD cup 2010},\n  author={Yu, H.F. and Lo, H.Y. and Hsieh, H.P. and Lou, J.K. and McKenzie, T.G. and Chou, J.W. and Chung, P.H. and Ho, C.H. and Chang, C.F. and Wei, Y.H. and others},\n  booktitle={Proceedings of the KDD Cup 2010 Workshop},\n  pages={1--16},\n  year={2010}\n}\n',
                  'docid': 2,
                  'filename': 'Yu et al - 2010 - Feature engineering and classifier ensemble for KDD cup 2010 - 2.pdf',
@@ -35,7 +35,6 @@ class TestRef(unittest.TestCase):
                  'tags': '',
                  'title': 'Feature engineering and classifier ensemble for KDD cup 2010',
                  'year': 2010}}
-
 
 
     def tearDown(self):
@@ -177,7 +176,19 @@ class TestRef(unittest.TestCase):
         doc['title'] = 'Fo!@#$%^&*()+o'
         self.assertEqual(ref.get_filename(doc), 'foo et al - 42 - Foo - 1.pdf')
 
+        doc['author'] = 'one author'
+        self.assertEqual(ref.get_filename(doc), 'one author - 42 - Foo - 1.pdf')
+
+    def test_parse_bibtex(self):
+        bibtex = '@book{ref,\n  title={title},\n  author={Foo, F.},\n  booktitle={journal},\n  year={2007}\n}\n'
+        self.assertDictEqual(dict(ref.parse_bibtex(bibtex)),
+            {'title': 'title', 'booktitle': 'journal', 'year': '2007', 'journal': 'journal', 'author': 'Foo'})
+
+        bibtex = '@book{ref,\n  title  = no braces,\n  author= {{many braces}},\n  journal={journal}\n}\n'
+        self.assertDictEqual(dict(ref.parse_bibtex(bibtex)),
+            {'title': 'no braces', 'author': 'many braces', 'journal': 'journal'})
+
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_get_filename')
+    unittest.main(defaultTest='TestRef.test_parse_bibtex')
     #unittest.main()
