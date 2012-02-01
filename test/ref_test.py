@@ -188,7 +188,13 @@ class TestRef(unittest.TestCase):
         self.assertDictEqual(dict(ref.parse_bibtex(bibtex)),
             {'title': 'no braces', 'author': 'many braces', 'journal': 'journal'})
 
+    def test_get_tags(self):
+        doc = self.documents[1]
+        self.assertSetEqual(ref.get_tags(), set()) 
+        doc['tags'] = 'tag1;tag2;space tag'
+        self.assertSetEqual(ref.get_tags(), {'tag1', 'tag2', 'space tag'})
+
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_parse_bibtex')
+    unittest.main(defaultTest='TestRef.test_get_tags')
     #unittest.main()
