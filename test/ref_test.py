@@ -116,24 +116,40 @@ class TestRef(unittest.TestCase):
         with self.assertRaises(ValueError):
             ref.insert_document('ref_test.py')
 
-    def test_insert_document_savepoint1(self):
+    def ref_status(self):
+        return (
+            ref.con.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
+            ref.con.execute('SELECT COUNT(*) FROM fulltext').fetchone()[0],
+            len(os.listdir(ref.DOCUMENT_DIR)))
+
+
+    def test_insert_document_transaction1(self):
         ref.con.execute('INSERT INTO documents DEFAULT VALUES')
         with self.assertRaises(AssertionError):
             ref.insert_document('data/kdd08koren.pdf', False)
-        self.assertEqual(ref.con.execute('SELECT COUNT(*) FROM documents').fetchone()[0], 3)
-        self.assertEqual(ref.con.execute('SELECT COUNT(*) FROM fulltext').fetchone()[0], 2)
-        self.assertEqual(len(os.listdir(ref.DOCUMENT_DIR)), 2)
+        self.assertEqual(self.ref_status(), (3, 2, 2))
 
-    def test_insert_document_savepoint2(self):
+    def test_insert_document_transaction2(self):
         os.chmod(ref.DOCUMENT_DIR, 0555)
         with self.assertRaises(IOError):
             ref.insert_document('data/kdd08koren.pdf', False)
         os.chmod(ref.DOCUMENT_DIR, 0755)
-        self.assertEqual(ref.con.execute('SELECT COUNT(*) FROM documents').fetchone()[0], 2)
-        self.assertEqual(ref.con.execute('SELECT COUNT(*) FROM fulltext').fetchone()[0], 2)
-        self.assertEqual(len(os.listdir(ref.DOCUMENT_DIR)), 2)
+        self.assertEqual(self.ref_status(), (2, 2, 2))
+
+    def test_delete(self):
+        ref.delete_document(1)
+        with self.assertRaises(StopIteration):
+            ref.delete_document(1)
+        self.assertEqual(self.ref_status(), (1, 1, 1))
+
+    def test_delete_transaction1(self):
+        os.chmod(ref.DOCUMENT_DIR, 0555)
+        with self.assertRaises(OSError):
+            ref.delete_document(2)
+        self.assertEqual(self.ref_status(), (2, 2, 2))
+        os.chmod(ref.DOCUMENT_DIR, 0755)
 
         
 if __name__ == '__main__':
-    unittest.main(defaultTest='TestRef.test_insert_document_savepoint2')
-    #unittest.main()
+    #unittest.main(defaultTest='TestRef.test_delete_transaction1')
+    unittest.main()
