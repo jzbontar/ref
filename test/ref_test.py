@@ -149,7 +149,25 @@ class TestRef(unittest.TestCase):
         self.assertEqual(self.ref_status(), (2, 2, 2))
         os.chmod(ref.DOCUMENT_DIR, 0755)
 
+    def test_search_documents(self):
+        search = lambda q: {k: [row['docid'] for row in rows] for k, rows in ref.search_documents(['docid'], q)}
+
+        self.assertDictEqual(search('feature'),
+            {'author': [], 'fulltext': [2, 1], 'journal': [], 'notes': [], 'tags': [], 'title': [2]})
+        self.assertDictEqual(search('chang'), 
+            {'author': [2], 'fulltext': [2], 'journal': [], 'notes': [], 'tags': [], 'title': []})
+        
+        doc = dict(self.documents[1])
+        doc['author'] = doc['journal'] = doc['notes'] = doc['tags'] = doc['title'] = 'foo'
+        ref.update_document(doc)
+        self.assertDictEqual(search('foo'),
+            {'author': [1], 'fulltext': [], 'journal': [1], 'notes': [1], 'tags': [1], 'title': [1]})
+
+        ref.delete_document(1)
+        self.assertDictEqual(search('feature'),
+            {'author': [], 'fulltext': [2], 'journal': [], 'notes': [], 'tags': [], 'title': [2]})
+
         
 if __name__ == '__main__':
-    #unittest.main(defaultTest='TestRef.test_delete_transaction1')
-    unittest.main()
+    unittest.main(defaultTest='TestRef.test_search_documents')
+    #unittest.main()
