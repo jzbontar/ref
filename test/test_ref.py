@@ -155,7 +155,7 @@ class Test(unittest.TestCase):
         os.chmod(ref.DOCUMENT_DIR, 0755)
 
     def test_search_documents(self):
-        search = lambda q: dict((k, [row['docid'] for row in rows]) for k, rows in ref.search_documents(['docid'], q))
+        search = lambda q: {k: [row['docid'] for row in rows] for k, rows in ref.search_documents(['docid'], q)}
 
         self.assertDictEqual(search('feature'),
             {'author': [], 'fulltext': [2, 1], 'journal': [], 'notes': [], 'tags': [], 'title': [2]})
