@@ -26,9 +26,11 @@ documents_fields = (
 
 def import_dir(dir):
     for base in os.listdir(dir):
-        print base
-        insert_document(os.path.join(dir, base))
-
+        try:
+            print base
+            insert_document(os.path.join(dir, base))
+        except Exception:
+            print 'Skipping', base
 
 def check_filenames():
     filenames = set(os.listdir(DOCUMENT_DIR))
