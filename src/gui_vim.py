@@ -100,7 +100,7 @@ def update_main(docids=None):
         if not docids:
             return
     cur = ref.select_documents(headers, docids)
-    docs = {doc['docid']: str_document(doc) for doc in cur}
+    docs = dict((doc['docid'], str_document(doc)) for doc in cur)
 
     for i, line in enumerate(main_buf):
         id = get_docid(line)

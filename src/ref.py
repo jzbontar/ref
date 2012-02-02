@@ -212,7 +212,7 @@ def extract_pdf(fname):
     xml = Popen(cmd, stdout=PIPE).communicate()[0]
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
-    font_size = {id: int(size) for id, size in fontspec}
+    font_size = dict((id, int(size)) for id, size in fontspec)
 
     chunks = []
     for id, text in re.findall(r'font="([^"]+)">(.*)</text>', xml):
