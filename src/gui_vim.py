@@ -73,8 +73,9 @@ def get_docid(line):
 
 
 def str_document(doc):
-    return '  '.join(
-        (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in headers))
+    return ('  '.join(
+        (str(doc[h] or '').decode('utf-8', 'replace')[:col_size[h]].ljust(col_size[h])
+         for h in headers))).encode('utf-8')
 
 
 def selected_document():
