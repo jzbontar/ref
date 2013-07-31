@@ -1,5 +1,6 @@
 from subprocess import Popen, PIPE
 import os
+import platform
 import glob
 import re
 import sqlite3
@@ -9,6 +10,7 @@ import collections
 
 import ref
 
+XDG_OPEN = ['xdg-open', 'open'][platform.system=="Darwin"]
 
 def search_documents(query):
     global last_select_cmd
@@ -71,8 +73,9 @@ def get_docid(line):
 
 
 def str_document(doc):
-    return '  '.join(
-        (str(doc[h] or '')[:col_size[h]].ljust(col_size[h]) for h in headers))
+    return ('  '.join(
+        (str(doc[h] or '').decode('utf-8', 'replace')[:col_size[h]].ljust(col_size[h])
+         for h in headers))).encode('utf-8')
 
 
 def selected_document():
@@ -129,7 +132,7 @@ def fetch_bibtex():
 
 def open_document():
     filename = selected_document()['filename']
-    Popen(['xdg-open', os.path.join(ref.DOCUMENT_DIR, filename)], stderr=PIPE, stdout=PIPE)
+    Popen([XDG_OPEN, os.path.join(ref.DOCUMENT_DIR, filename)], stderr=PIPE, stdout=PIPE)
 
 
 def add_document(fname):
