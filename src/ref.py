@@ -102,6 +102,7 @@ def insert_document(fname, fetch=True):
         if not doc['bibtex']:
             doc['bibtex'] = '@{{\n  title={}\n}}\n'.format(doc['title'])
         doc.update(parse_bibtex(doc['bibtex']))
+        doc['title'] = title[:127]
     
     try:
         con.execute('SAVEPOINT insert_document')
@@ -227,6 +228,8 @@ def extract_pdf(fname):
     title = ''
     for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
         title = ' '.join(map(lambda xs: xs[2], group)).strip()
+        if 'arxiv' in title.lower():
+            continue
         bad = ('abstract', 'introduction', 'relatedwork', 'originalpaper', 'bioinformatics')
         if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
             break
