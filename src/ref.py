@@ -132,11 +132,15 @@ def insert_document(fname, fetch=True):
     doc['title'] = title[:127]
     doc['rating'] = 'U'
     if fetch:
-        doc['bibtex'] = fetch_bibtex(doc['title'])
-        if not doc['bibtex']:
-            doc['bibtex'] = '@{{\n  title={}\n}}\n'.format(doc['title'])
-        doc.update(parse_bibtex(doc['bibtex']))
-        doc['title'] = title[:127]
+        if len(title)>0:
+            doc['bibtex'] = fetch_bibtex(doc['title'])
+            if not doc['bibtex']:
+                doc['bibtex'] = '@{{\n  title={}\n}}\n'.format(doc['title'])
+            doc.update(parse_bibtex(doc['bibtex']))
+            doc['title'] = title[:127]
+        else:
+            # no title found
+            doc['bibtex'] = '@{{\n  title=\n}}\n'
 
     try:
         con.execute('SAVEPOINT insert_document')
