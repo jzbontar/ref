@@ -1,7 +1,6 @@
 ref
 ===
-Ref is a super light-weight command-line open source reference manager.
-It is built on python and vim.
+Ref is a lightweight command-line reference manager. It is built on python and vim. 
 
 All information is on <a href="http://jzbontar.github.io/ref/">the website</a>.
 

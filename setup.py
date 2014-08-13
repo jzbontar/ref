@@ -3,7 +3,7 @@ import os
 import sys
 from distutils.core import setup, Command
 
-    
+
 class TestCommand(Command):
     description = "Run unittests"
     user_options = [('all-tests', 'a', 'Run all tests.')]
@@ -24,8 +24,8 @@ class TestCommand(Command):
 
 setup(name='ref',
     version='0.1',
-    url='https://bitbucket.org/jzbontar/ref/',
-    description='A usable reference manager.',
+    url='https://github.com/jzbontar/ref',
+    description='Ref is a lightweight command-line reference manager.',
     py_modules=['ref', 'gui_vim'],
     package_dir={'': 'src'},
     scripts=['src/ref'],
