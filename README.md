@@ -3,13 +3,9 @@ ref
 Ref is a super light-weight command-line open source reference manager.
 It is built on python and vim.
 
-Install
-===
-git clone
-python setup.py
-
-Getting started
-===
+Check the website out 
+All information is on <a href="http://jzbontar.github.io/ref/">the website</a>.
 
 
-Ref is published under a nieteklote license.
+
+Ref is released under the terms of the MIT license.
