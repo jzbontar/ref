@@ -40,20 +40,31 @@ import HTMLParser
 
 
 documents_fields = (
-    ('docid', 'INTEGER PRIMARY KEY'), ('tags', 'TEXT'), ('title', 'TEXT'), 
-    ('author', 'TEXT'), ('year', 'INTEGER'), ('rating', 'INTEGER'), 
-    ('journal', 'TEXT'), ('filename', 'TEXT'), ('notes', 'TEXT'), 
+    ('docid', 'INTEGER PRIMARY KEY'), ('tags', 'TEXT'), ('title', 'TEXT'),
+    ('author', 'TEXT'), ('year', 'INTEGER'), ('rating', 'INTEGER'),
+    ('journal', 'TEXT'), ('filename', 'TEXT'), ('notes', 'TEXT'),
     ('bibtex', 'TEXT')
 )
 
-
-def import_dir(dir):
+def import_dir(dir,recursive=True):
     for base in os.listdir(dir):
         try:
             print base
-            insert_document(os.path.join(dir, base))
-        except Exception:
-            print 'Skipping', base
+            if os.path.isdir(os.path.join(dir,base)):
+                if recursive:
+                    print "Enter Folder {}".format(base)
+                    import_dir(os.path.join(dir,base),True)
+                    print "Exit Folder {}".format(base)
+                else:
+                    print " -- skip directory"
+            else:
+                insert_document(os.path.join(dir, base))
+        except DuplicateError:
+            print 'Skipping duplicate ',base
+        except Exception as e:
+            #print e
+            #print 'Skipping', base
+            raise
 
 def check_filenames():
     filenames = set(os.listdir(DOCUMENT_DIR))
@@ -98,10 +109,10 @@ def update_document(doc):
     except:
         con.execute('ROLLBACK TO update_document')
         raise
-        
+
 class DuplicateError(Exception):
     pass
-    
+
 def insert_document(fname, fetch=True):
     if not os.path.isfile(fname):
         raise IOError('{} is not a file'.format(fname))
@@ -126,7 +137,7 @@ def insert_document(fname, fetch=True):
             doc['bibtex'] = '@{{\n  title={}\n}}\n'.format(doc['title'])
         doc.update(parse_bibtex(doc['bibtex']))
         doc['title'] = title[:127]
-    
+
     try:
         con.execute('SAVEPOINT insert_document')
         ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
@@ -162,23 +173,23 @@ def delete_document(docid):
 def search_documents(fields, query, order='docid DESC'):
     res = []
     for field in ('tags', 'title', 'author', 'journal', 'notes'):
-        cur = con.execute('''SELECT {} FROM documents WHERE {} LIKE ? 
-            ORDER BY {}'''.format(','.join(fields), field, order), 
+        cur = con.execute('''SELECT {} FROM documents WHERE {} LIKE ?
+            ORDER BY {}'''.format(','.join(fields), field, order),
             ('%' + query + '%',))
         res.append((field, cur))
-    cur = con.execute('''SELECT {} FROM documents JOIN 
+    cur = con.execute('''SELECT {} FROM documents JOIN
         (SELECT docid FROM fulltext WHERE content MATCH ?)
         USING(docid) ORDER BY {}'''.format(','.join(fields), order), (query,))
     res.append(('fulltext', cur))
     return res
-        
+
 
 def get_filename(doc):
     if doc['author'].count(', ') > 2:
         author = doc['author'].split(', ')[0] + ' et al'
     else:
         author = doc['author']
-    fields = (author, doc['year'], doc['title'], doc['docid']) 
+    fields = (author, doc['year'], doc['title'], doc['docid'])
     filename = ' - '.join(re.sub(r'[^-\w,. ]', '', str(f)) for f in fields if f)
     filename += os.path.splitext(doc['filename'])[1]
     return filename
@@ -226,7 +237,7 @@ def extract_chm(fname):
             break
     shutil.rmtree(dir)
     return title, fulltext
-        
+
 
 def extract_pdf(fname):
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
@@ -310,7 +321,7 @@ def init(base_dir=os.path.expanduser('~/.ref')):
     for dir in (BASE_DIR, DOCUMENT_DIR):
         if not os.path.exists(dir):
             os.mkdir(dir)
-     
+
     con = sqlite3.connect(os.path.join(BASE_DIR, 'documents.sqlite3'))
     con.isolation_level = None
     con.row_factory = sqlite3.Row
