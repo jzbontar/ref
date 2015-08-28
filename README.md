@@ -40,13 +40,22 @@ start blocking the randomly generated cookies; you can skip this for now.
 
 # Usage
 Type "ref" on the command line to see the main screen which is a vim session with two panes, split horizontally.
-Move around like usual in vim with hjkl and jump between the panes with ctrl+W+W
+Move around like usual in vim with hjkl and jump between the panes with `ctrl+W+W`
 
 * `:Add rel/path/to/downloaded/pdf` will add the document and fetch the bibtex from google scholar based on the title from the document.
 * `:Fetch` if the fetched bibtex was wrong, fix the title then type `:Fetch` to try again.
 * Search by typing `//keyword` where the keyword could be an author name or words from the title.
 * To clear a search just enter `//` (i.e. search without any keyword)
 * You can still use vim's regular search with `/keyword`
+* Exit with `q`
+* `ctrl+U` toggles the U flag (U for Unread)
+* `:Delete` deletes document
+
+# Screenshot
+![plot](screenshot.png?raw=true)
 
 # Pro tips
-You're already a pro.
+If you're switching from another reference manager or just a messy folder of pdfs,
+you can open a python session, type `import ref; ref.init()` and `ref.import_dir(/path/to/your/messy/folder)`
+
+The codebase consists of two files with less than 600LoC, it's easy to change things if needed.
