@@ -52,7 +52,7 @@ Move around like usual in vim with hjkl and jump between the panes with `ctrl+W+
 * `:Delete` deletes document
 
 # Screenshot
-![plot](screenshot.png?raw=true)
+![screenshot](screeshot.png?raw=true)
 
 # Pro tips
 If you're switching from another reference manager or just a messy folder of pdfs,
