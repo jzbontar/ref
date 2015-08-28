@@ -275,13 +275,12 @@ def extract_pdf(fname):
 
 
 def fetch_bibtex(title):
-    try:
-        url = '/scholar?q=allintitle:' + urllib2.quote(title)
-        match = re.search(r'<a href="(/scholar.bib[^"]+)', scholar_read(url))
-        return scholar_read(match.group(1))
-    except (urllib2.HTTPError, urllib2.URLError, AttributeError):
-        return
-
+    # Raises urllib2 errors
+    url = '/scholar?q=allintitle:' + urllib2.quote(title)
+    query_response = scholar_read(url)
+    #print(len(query_response))
+    match = re.search(r'<a href="(/scholar.bib[^"]+)', query_response)
+    return scholar_read(match.group(1))
 
 def delay(n, interval):
     def decorator(f):

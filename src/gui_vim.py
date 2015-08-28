@@ -30,10 +30,11 @@ import sqlite3
 import sys
 import vim
 import collections
+import urllib2
 
 import ref
 
-XDG_OPEN = ['xdg-open', 'open'][platform.system=="Darwin"]
+XDG_OPEN = ['xdg-open', 'open'][platform.system()=="Darwin"]
 
 def search_documents(query):
     global last_select_cmd
@@ -144,9 +145,10 @@ def reload_main():
 
 def fetch_bibtex():
     doc = parse_info()
-    doc['bibtex'] = ref.fetch_bibtex(doc['title'])
-    if not doc['bibtex']:
-        print 'Fetch failed'
+    try:
+        doc['bibtex'] = ref.fetch_bibtex(doc['title'])
+    except (urllib2.HTTPError, urllib2.URLError, AttributeError) as e:
+        print 'Fetch failed: %s' % str(e)
         return
     doc.update(ref.parse_bibtex(doc['bibtex']))
     save_info(doc)
@@ -248,6 +250,7 @@ c('com -nargs=? -complete=customlist,Column Order py order_documents("<args>")')
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
 c('com -nargs=1 -complete=file Export py export_bib("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
+c('set nonumber')
 
 c('''function Tag(ArgLead, CmdLine, CursorPos)
     python c('let xs = {}'.format(list(tags)))
