@@ -37,6 +37,7 @@ import tempfile
 import time
 import urllib2
 import HTMLParser
+import json
 
 
 documents_fields = (
@@ -45,6 +46,12 @@ documents_fields = (
     ('journal', 'TEXT'), ('filename', 'TEXT'), ('notes', 'TEXT'),
     ('bibtex', 'TEXT')
 )
+
+cfg = {
+    'base_dir'   : '~/.ref',
+    'Cookie'     : 'GSP=ID={}:CF=4;'.format(''.join(random.choice('0123456789abcdef') for i in range(16))),
+    'User-Agent' : 'Mozilla/5.0'
+}
 
 def import_dir(dir,recursive=True):
     for base in os.listdir(dir):
@@ -296,12 +303,9 @@ def delay(n, interval):
 
 @delay(2, 3)
 def scholar_read(url):
-    id = ''.join(random.choice('0123456789abcdef') for i in range(16))
-    cookie = 'GSP=ID={}:CF=4;'.format(id)
-    h = {'User-agent': 'Mozilla/5.0', 'Cookie': cookie}
+    h         = {'User-Agent': cfg['User-Agent'], 'Cookie': cfg['Cookie']}
     req = urllib2.Request('http://scholar.google.com' + url, headers=h)
     return unescape(urllib2.urlopen(req).read().decode('utf8')).encode('utf8')
-
 
 def striptags(html):
     return unescape(re.sub(r'<[^>]+>', '', html))
@@ -315,10 +319,19 @@ def export_bib(fname):
     open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
 
 
-def init(base_dir=os.path.expanduser('~/.ref')):
-    global con, BASE_DIR, DOCUMENT_DIR
+def init():
+    global cfg, con, BASE_DIR, DOCUMENT_DIR
 
-    BASE_DIR = base_dir
+    try:
+        with open(os.path.expanduser('~/.ref.conf')) as fh:
+            cfgLoaded = json.loads(fh.read())
+        cfg = {k: cfgLoaded[k] if k in cfgLoaded else cfg[k] for k,v in cfg.items()}
+    except IOError as e:
+        pass # config file not mandatory
+    except ValueError as e:
+        print("~/.ref.conf contains an error: %s" % str(e))
+
+    BASE_DIR = os.path.expanduser(cfg['base_dir'])
     DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
 
     for dir in (BASE_DIR, DOCUMENT_DIR):
