@@ -286,8 +286,12 @@ def fetch_bibtex(title):
     url = '/scholar?q=allintitle:' + urllib2.quote(title)
     query_response = scholar_read(url)
     #print(len(query_response))
-    match = re.search(r'<a href="(/scholar.bib[^"]+)', query_response)
-    return scholar_read(match.group(1))
+    match = re.search(r'<a href="[^"]*(/scholar.bib[^"]+)', query_response)
+    if match:
+        return scholar_read(match.group(1))
+    else:
+        print 'No bibtex found on google scholar'
+        return '@article{\n  title={%s}\n}' % title
 
 def delay(n, interval):
     def decorator(f):
