@@ -254,7 +254,7 @@ def extract_pdf(fname):
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
     fulltext = Popen(cmd, stdout=PIPE).communicate()[0]
 
-    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '3', fname]
+    cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '3', '-i', fname]
     xml = Popen(cmd, stdout=PIPE).communicate()[0]
 
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
