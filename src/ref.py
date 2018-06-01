@@ -131,11 +131,11 @@ def insert_document(fname, fetch=True):
 
     ext = os.path.splitext(fname)[1]
     extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
-    if ext not in extract_funs:
-        raise ValueError('Unsupported file type {}'.format(ext))
+    if ext.lower() not in extract_funs:
+        raise ValueError('Unsupported file type {}'.format(ext.lower()))
 
     doc = collections.defaultdict(str)
-    title, doc['fulltext'] = extract_funs[ext](fname)
+    title, doc['fulltext'] = extract_funs[ext.lower()](fname)
     doc['title'] = title[:127]
     doc['rating'] = 'U'
     if fetch:
