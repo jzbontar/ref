@@ -53,24 +53,25 @@ cfg = {
     'User-Agent' : 'Mozilla/5.0'
 }
 
-def import_dir(dir,recursive=True):
-    for base in os.listdir(dir):
+def import_folder(foldername, recurse=True, del_files=False):
+    print "Import folder {}".format(foldername)
+    for f in sorted(os.listdir(foldername), key=os.path.getmtime):
+        print f
+        if os.path.isdir(os.path.join(foldername,f)):
+            if recurse:
+                import_folder(os.path.join(foldername,f), recurse, del_files)
+        if os.path.splitext(f)[1].lower() not in extract_funs:
+            #print 'not in extract_funs', os.path.splitext(f)[1].lower(), extract_funs.keys()
+            continue
         try:
-            print base
-            if os.path.isdir(os.path.join(dir,base)):
-                if recursive:
-                    print "Enter Folder {}".format(base)
-                    import_dir(os.path.join(dir,base),True)
-                    print "Exit Folder {}".format(base)
-                else:
-                    print " -- skip directory"
-            else:
-                insert_document(os.path.join(dir, base))
+            fname = os.path.join(foldername, f)
+            print fname
+            insert_document(fname)
+            if del_files:
+                os.remove(fname)
         except DuplicateError:
-            print 'Skipping duplicate ',base
+            print 'Skipping duplicate ', f
         except Exception as e:
-            #print e
-            #print 'Skipping', base
             raise
 
 def check_filenames():
@@ -130,7 +131,6 @@ def insert_document(fname, fetch=True):
             raise DuplicateError(base2)
 
     ext = os.path.splitext(fname)[1]
-    extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
     if ext.lower() not in extract_funs:
         raise ValueError('Unsupported file type {}'.format(ext.lower()))
 
@@ -145,7 +145,8 @@ def insert_document(fname, fetch=True):
         try:
             newbibtex   = fetch_bibtex(doc['title'], arxivId)
             newbibtex_p = parse_bibtex(newbibtex)
-            if approximate_match(newbibtex_p['title'], doc['title']):
+            if arxivId or approximate_match(newbibtex_p['title'], doc['title']):
+                # trust new bibtex based on title matching (scholar) or retrieving on arxivId.
                 doc['bibtex'] = newbibtex
                 doc.update(newbibtex_p)
             else:
@@ -265,6 +266,9 @@ def extract_pdf(fname):
     title, arxivId = extract_heuristic(fname, fulltext, xml)
     return title, fulltext, arxivId
 
+# MODULE GLOBAL DICT
+extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+
 def parse_arxiv(s, prefix=True, version=True):
     pattern = (r'arXiv:' if prefix else '') + r'(\d{4}).(\d{5})' + (r'v(\d)' if version else '')
     #res = re.findall(r'arXiv:(\d{4}).(\d{5})v(\d)', s) if full else re.findall(r'(\d{4}).(\d{5})',s)
@@ -273,9 +277,8 @@ def parse_arxiv(s, prefix=True, version=True):
 
 def extract_heuristic(fname, fulltext, xml):
     ### arxiv: extract Id (discard version); appearing in fname and beginning of fulltext.
-    arxivIdFn   = parse_arxiv(fname, False, False)
-    arxivIdText = parse_arxiv(fulltext[:200], True, True) # should appear at very top of fulltext
-    arxivId = arxivIdText if arxivIdFn in [arxivIdText, None] else None # match or random fn
+    arxivId = parse_arxiv(fname, False, False)
+    arxivId = arxivId if arxivId else parse_arxiv(fulltext[:200], True, True) 
 
     title = title_heuristic_fontsize(xml)
     if 'ICLR' in fulltext.split('\n')[0] and len(title) < 12: # no decent title expected
@@ -337,7 +340,7 @@ def approximate_match(tnew, told):
     return False
 
 def meaningful(word):
-    return len(w) > 3 or w=='gan'
+    return len(word) > 3 or word=='gan'
 
 def dummy_bibtex(title, arxivId):
     bibtex = ['@article{defaultbib,',

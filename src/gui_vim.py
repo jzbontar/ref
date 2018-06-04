@@ -174,6 +174,14 @@ def add_document_del(fname):
     add_document(fname) # copies pdf over to ref.DOCUMENT_DIR
     os.remove(fname)
 
+def add_folder(fname):
+    ref.import_folder(fname, recurse=True, del_files=False)
+    reload_main()
+
+def add_folder_del(fname):
+    ref.import_folder(fname, recurse=True, del_files=True)
+    reload_main()
+
 def export_bib(fname):
     ref.export_bib(fname)
 
@@ -254,6 +262,8 @@ c("com -nargs=? -complete=customlist,Tag Search py search_documents('''<args>'''
 c('com -nargs=? -complete=customlist,Column Order py order_documents("<args>")')
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
 c('com -nargs=1 -complete=file Addd py add_document_del("<args>")')
+c('com -nargs=1 -complete=file Addf py add_folder("<args>")')
+c('com -nargs=1 -complete=file Addfd py add_folder_del("<args>")')
 c('com -nargs=1 -complete=file Export py export_bib("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 c('set nonumber')
