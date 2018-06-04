@@ -146,7 +146,10 @@ def reload_main():
 def fetch_bibtex():
     doc = parse_info()
     try:
-        doc['bibtex'] = ref.fetch_bibtex(doc['title'])
+        doc['bibtex'] = ref.fetch_bibtex(doc['title'], arxivId=None)
+        # TODO also consider arXiv fetching here? This will always go to gscholar..
+        # I probably want a new column in the dbase "eprint"= arXiv:XX | openreview:xxx
+        # see https://arxiv.org/hypertex/bibstyles/
     except (urllib2.HTTPError, urllib2.URLError, AttributeError) as e:
         print 'Fetch failed: %s' % str(e)
         return

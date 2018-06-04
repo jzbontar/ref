@@ -135,20 +135,25 @@ def insert_document(fname, fetch=True):
         raise ValueError('Unsupported file type {}'.format(ext.lower()))
 
     doc = collections.defaultdict(str)
-    title, doc['fulltext'] = extract_funs[ext.lower()](fname)
+    title, doc['fulltext'], arxivId = extract_funs[ext.lower()](fname)
     doc['title'] = title[:127]
     doc['rating'] = 'U'
-    if fetch:
-        if len(title)>0:
-            doc['bibtex'] = fetch_bibtex(doc['title'])
-            if not doc['bibtex']:
-                doc['bibtex'] = '@{{\n  title={}\n}}\n'.format(doc['title'])
-            doc.update(parse_bibtex(doc['bibtex']))
-            doc['title'] = title[:127]
-        else:
-            # no title found
-            doc['bibtex'] = '@{{\n  title=\n}}\n'
+    # default dummy bibtex with title and arxivId
+    doc['bibtex'] = dummy_bibtex(doc['title'], arxivId)
 
+    if fetch:
+        try:
+            newbibtex   = fetch_bibtex(doc['title'], arxivId)
+            newbibtex_p = parse_bibtex(newbibtex)
+            if approximate_match(newbibtex_p['title'], doc['title']):
+                doc['bibtex'] = newbibtex
+                doc.update(newbibtex_p)
+            else:
+                raise ValueError('Retrieved a non-matching bibtex. Correct and :Fetch', newbibtex)
+        except (urllib2.HTTPError, urllib2.URLError, AttributeError, AssertionError, ValueError) as e:
+            #pass # ref functions are quiet, fetch can silently fail with known errors
+            print(e)
+            print('bibtex fetch failed, continue with default bibtex')
     try:
         con.execute('SAVEPOINT insert_document')
         ft_c = con.execute('INSERT INTO fulltext VALUES (?)', (doc['fulltext'],))
@@ -231,7 +236,7 @@ def extract_djvu(fname):
     title = re.sub(r'\s+', ' ', title).strip()
     if len(title) > 100:
         title = ''
-    return title, fulltext
+    return title, fulltext, None
 
 
 def extract_chm(fname):
@@ -247,7 +252,7 @@ def extract_chm(fname):
                 fulltext += striptags(open(os.path.join(dir, html)).read())
             break
     shutil.rmtree(dir)
-    return title, fulltext
+    return title, fulltext, None
 
 
 def extract_pdf(fname):
@@ -257,6 +262,28 @@ def extract_pdf(fname):
     cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '3', '-i', fname]
     xml = Popen(cmd, stdout=PIPE).communicate()[0]
 
+    title, arxivId = extract_heuristic(fname, fulltext, xml)
+    return title, fulltext, arxivId
+
+def parse_arxiv(s, prefix=True, version=True):
+    pattern = (r'arXiv:' if prefix else '') + r'(\d{4}).(\d{5})' + (r'v(\d)' if version else '')
+    #res = re.findall(r'arXiv:(\d{4}).(\d{5})v(\d)', s) if full else re.findall(r'(\d{4}).(\d{5})',s)
+    res = re.findall(pattern, s)
+    return '{0}.{1}'.format(*res[0]) if len(res)==1 else None
+
+def extract_heuristic(fname, fulltext, xml):
+    ### arxiv: extract Id (discard version); appearing in fname and beginning of fulltext.
+    arxivIdFn   = parse_arxiv(fname, False, False)
+    arxivIdText = parse_arxiv(fulltext[:200], True, True) # should appear at very top of fulltext
+    arxivId = arxivIdText if arxivIdFn in [arxivIdText, None] else None # match or random fn
+
+    title = title_heuristic_fontsize(xml)
+    if 'ICLR' in fulltext.split('\n')[0] and len(title) < 12: # no decent title expected
+        title = title_heuristic_iclr(fulltext)
+    return title, arxivId
+
+def title_heuristic_fontsize(xml):
+    ### Fontsize heuristic for the title
     fontspec = re.findall(r'<fontspec id="([^"]+)" size="([^"]+)"', xml)
     font_size = {id: int(size) for id, size in fontspec}
 
@@ -278,20 +305,89 @@ def extract_pdf(fname):
         bad = ('abstract', 'introduction', 'relatedwork', 'originalpaper', 'bioinformatics')
         if len(title) >= 5 and re.sub(r'[\d\s]', '', title).lower() not in bad:
             break
-    return title, fulltext
+    return title
 
+def title_heuristic_iclr(fulltext):
+    lines = fulltext.split('\n')
+    try:
+        assert lines[1].strip() == ''
+        title = []
+        for line in lines[2:]:
+            if not line.isupper():
+                break
+            #chopped_words = re.findall(r'[^\w](\w) (\w+)', line)
+            chopped_words = re.findall(r'(?:[^\w]|^)(\w|\')?(?: |^|-)(\w+)', line)
+            title += [a+b for a,b in chopped_words]
+        return ' '.join(title)
+    except: # catchall
+        return ''
 
-def fetch_bibtex(title):
+def approximate_match(tnew, told):
+    if tnew == told:
+        return True
+    tnew, told = (re.sub('[^\w ]','',s.lower()).split() for s in (tnew, told))
+    if tnew == told:
+        return True
+    tnew, told = ([w for w in t if meaningful(w)] for t in (tnew, told))
+    if tnew == told or set(tnew) == set(told):
+        return True
+    elif len(set(tnew) - set(told)) < 0.3 * len(set(told)):
+        return True
+    # hmm maybe better just do edit distance.. this may fail for short titles
+    return False
+
+def meaningful(word):
+    return len(w) > 3 or w=='gan'
+
+def dummy_bibtex(title, arxivId):
+    bibtex = ['@article{defaultbib,',
+              '  title={{{}}},'.format(title),
+              '}', '']
+    if arxivId:
+        bibtex.insert(-2, '  journal ={{arXiv:{}}},'.format(arxivId))
+        bibtex.insert(-2, '  year    ={{{}}},'.format(2000+int(arxivId[:2])))
+        bibtex.insert(-2, '  eprint  ={{{}}},'.format(arxivId))
+    return '\n'.join(bibtex)
+
+def fetch_bibtex(title, arxivId):
     # Raises urllib2 errors
+    if arxivId:
+        bibtex = fetch_bibtex_arxiv(arxivId)
+    else:
+        bibtex = fetch_bibtex_gscholar(title)
+    bibtex  = bibtex.replace('arXiv preprint arXiv:', 'arXiv:') # in field 'journal'
+    arxivId = arxivId if arxivId else parse_arxiv(bibtex, True, False)
+    # Make sure arxivId is added as field eprint, https://arxiv.org/hypertex/bibstyles/
+    if arxivId and 'eprint' not in parse_bibtex(bibtex):
+        lines = bibtex.strip().split('\n')
+        lines[-2] += ',' if not lines[-2].strip()[-1]==',' else '' # end with comma
+        lines.insert(-1, '  archivePrefix={arXiv},')
+        lines.insert(-1, '  eprint       ={{{}}},'.format(arxivId))
+        bibtex = '\n'.join(lines + [''])
+    return bibtex
+
+def fetch_bibtex_gscholar(title):
+    # Raises urllib2 errors, ValueError
     url = '/scholar?q=allintitle:' + urllib2.quote(title)
+    return scholar_query(url)
+
+def fetch_bibtex_arxiv(arxivId, timeout=2.0):
+    # Raises urllib2 errors, ValueError
+    # TODO explore arxiv auto bibtex or just generate from arXiv/abs page?
+    # google scholar has delay of couple days..
+    # https://tex.stackexchange.com/questions/3833/how-to-cite-an-article-from-arxiv-using-bibtex
+    # For now just go back to scholar but with arxivId..
+    #url = '/scholar?q=' + urllib2.quote('source:'+arxivId)
+    url = '/scholar?q=source:'+arxivId
+    return scholar_query(url)
+
+def scholar_query(url):
     query_response = scholar_read(url)
-    #print(len(query_response))
     match = re.search(r'<a href="[^"]*(/scholar.bib[^"]+)', query_response)
     if match:
         return scholar_read(match.group(1))
     else:
-        print 'No bibtex found on google scholar'
-        return '@article{\n  title={%s}\n}' % title
+        raise  ValueError('No bibtex found on google scholar')
 
 def delay(n, interval):
     def decorator(f):
@@ -305,11 +401,11 @@ def delay(n, interval):
     return decorator
 
 
-@delay(2, 3)
-def scholar_read(url):
+@delay(2, 1)
+def scholar_read(url, timeout=2.0):
     h         = {'User-Agent': cfg['User-Agent'], 'Cookie': cfg['Cookie']}
     req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib2.urlopen(req).read().decode('utf8')).encode('utf8')
+    return unescape(urllib2.urlopen(req, timeout=timeout).read().decode('utf8')).encode('utf8')
 
 def striptags(html):
     return unescape(re.sub(r'<[^>]+>', '', html))
