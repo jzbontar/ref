@@ -30,7 +30,7 @@ import sqlite3
 import sys
 import vim
 import collections
-import urllib2
+import urllib, urllib2
 
 import ref
 
@@ -182,6 +182,13 @@ def add_folder_del(fname):
     ref.import_folder(fname, recurse=True, del_files=True)
     reload_main()
 
+def add_arxiv(url_or_id):
+    arxivId = ref.parse_arxiv(url_or_id, False, False) # can be just id, or filename, or html/pdf url.
+    pdfUrl  = 'https://arxiv.org/pdf/{}.pdf'.format(arxivId)
+    fname   ='ref.tmp.{}.pdf'.format(arxivId)
+    urllib.urlretrieve(pdfUrl, fname)
+    add_document_del(fname)
+
 def export_bib(fname):
     ref.export_bib(fname)
 
@@ -264,6 +271,7 @@ c('com -nargs=1 -complete=file Add py add_document("<args>")')
 c('com -nargs=1 -complete=file Addd py add_document_del("<args>")')
 c('com -nargs=1 -complete=file Addf py add_folder("<args>")')
 c('com -nargs=1 -complete=file Addfd py add_folder_del("<args>")')
+c('com -nargs=1 -complete=file Adda py add_arxiv("<args>")')
 c('com -nargs=1 -complete=file Export py export_bib("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 c('set nonumber')
