@@ -8,12 +8,13 @@ Ref is released under the terms of the MIT license.
 ```
 conda create -n ref python=2
 conda activate ref
-conda install poppler vim -c conda-forge
-conda install conda-forge::ncurses
+conda install poppler vim ncurses -c conda-forge
 git clone git@github.com:jzbontar/ref ref-for-conda
 cd ref-for-conda/
-python setup.py install
+python setup.py develop
 ```
+
+Replace the last line with `python setup.py install` if you don't want to change ref.
 
 ## Prerequesites (manual)
 You'll need a recent vim, compiled with python 2.7 support.
