@@ -1,3 +1,4 @@
 #! /bin/sh
-export PYTHONPATH=$PYTHONPATH:`dirname $0`
+export PYTHONHOME=$(dirname $(dirname $0))
+export PATH=${PYTHONHOME}/bin:$PATH
 vim -c "python from gui_vim import *"

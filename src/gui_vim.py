@@ -30,7 +30,7 @@ import sqlite3
 import sys
 import vim
 import collections
-import urllib2
+import urllib, urllib2
 
 import ref
 
@@ -146,7 +146,10 @@ def reload_main():
 def fetch_bibtex():
     doc = parse_info()
     try:
-        doc['bibtex'] = ref.fetch_bibtex(doc['title'])
+        doc['bibtex'] = ref.fetch_bibtex(doc['title'], arxivId=None)
+        # TODO also consider arXiv fetching here? This will always go to gscholar..
+        # I probably want a new column in the dbase "eprint"= arXiv:XX | openreview:xxx
+        # see https://arxiv.org/hypertex/bibstyles/
     except (urllib2.HTTPError, urllib2.URLError, AttributeError) as e:
         print 'Fetch failed: %s' % str(e)
         return
@@ -167,10 +170,27 @@ def add_document(fname):
         main_buf[:0] = [str_document(doc)]
     main_win.cursor = (1, 0)
 
+def add_document_del(fname):
+    add_document(fname) # copies pdf over to ref.DOCUMENT_DIR
+    os.remove(fname)
+
+def add_folder(fname):
+    ref.import_folder(fname, recurse=True, del_files=False)
+    reload_main()
+
+def add_folder_del(fname):
+    ref.import_folder(fname, recurse=True, del_files=True)
+    reload_main()
+
+def add_arxiv(url_or_id):
+    arxivId = ref.parse_arxiv(url_or_id, False, False) # can be just id, or filename, or html/pdf url.
+    pdfUrl  = 'https://arxiv.org/pdf/{}.pdf'.format(arxivId)
+    fname   ='ref.tmp.{}.pdf'.format(arxivId)
+    urllib.urlretrieve(pdfUrl, fname)
+    add_document_del(fname)
 
 def export_bib(fname):
     ref.export_bib(fname)
-
 
 def delete_document(lineFrom, lineTo):
     if vim.current.buffer != main_buf:
@@ -248,6 +268,10 @@ c('com -nargs=1 -complete=customlist,Tag Tag py insert_tag("<args>")')
 c("com -nargs=? -complete=customlist,Tag Search py search_documents('''<args>''')")
 c('com -nargs=? -complete=customlist,Column Order py order_documents("<args>")')
 c('com -nargs=1 -complete=file Add py add_document("<args>")')
+c('com -nargs=1 -complete=file Addd py add_document_del("<args>")')
+c('com -nargs=1 -complete=file Addf py add_folder("<args>")')
+c('com -nargs=1 -complete=file Addfd py add_folder_del("<args>")')
+c('com -nargs=1 -complete=file Adda py add_arxiv("<args>")')
 c('com -nargs=1 -complete=file Export py export_bib("<args>")')
 c('com -range Delete py delete_document(<line1>, <line2>)')
 c('set nonumber')
