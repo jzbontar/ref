@@ -390,7 +390,7 @@ def scholar_query(url):
     if match:
         return scholar_read(match.group(1))
     else:
-        raise  ValueError('No bibtex found on google scholar')
+        raise  ValueError('No bibtex found on google scholar (cookie correct? bot-blocked?)')
 
 def delay(n, interval):
     def decorator(f):

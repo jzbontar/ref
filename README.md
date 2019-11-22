@@ -4,14 +4,25 @@ Ref is a lightweight command-line reference manager. It is built on python and v
 Ref is released under the terms of the MIT license.
 
 # Installation
-## Prerequesites
+## Preferred: Installation in dedicated conda environment
+```
+conda create -n ref python=2
+conda activate ref
+conda install poppler vim -c conda-forge
+conda install conda-forge::ncurses
+git clone git@github.com:jzbontar/ref ref-for-conda
+cd ref-for-conda/
+python setup.py install
+```
+
+## Prerequesites (manual)
 You'll need a recent vim, compiled with python 2.7 support.
 
 On ubuntu the ones in `apt-get` will do,
 on Mac OS X use `brew install python` and `brew install vim`.
 On Mac OS X you'll also need poppler for the pdftotext command line tool: `brew install poppler`
 
-## Installation
+## Installation (manual)
 ```
 git clone https://github.com/jzbontar/ref.git
 cd ref
