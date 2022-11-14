@@ -24,7 +24,7 @@
 from subprocess import Popen, PIPE
 import collections
 import filecmp
-import htmlentitydefs
+import html.entities
 import itertools
 import os
 import random
@@ -35,8 +35,8 @@ import struct
 import sys
 import tempfile
 import time
-import urllib2
-import HTMLParser
+import urllib.request, urllib.error, urllib.parse
+import html.parser
 import json
 
 
@@ -54,9 +54,9 @@ cfg = {
 }
 
 def import_folder(foldername, recurse=True, del_files=False):
-    print "Import folder {}".format(foldername)
+    print("Import folder {}".format(foldername))
     for f in sorted(os.listdir(foldername), key=os.path.getmtime):
-        print f
+        print(f)
         if os.path.isdir(os.path.join(foldername,f)):
             if recurse:
                 import_folder(os.path.join(foldername,f), recurse, del_files)
@@ -65,12 +65,12 @@ def import_folder(foldername, recurse=True, del_files=False):
             continue
         try:
             fname = os.path.join(foldername, f)
-            print fname
+            print(fname)
             insert_document(fname)
             if del_files:
                 os.remove(fname)
         except DuplicateError:
-            print 'Skipping duplicate ', f
+            print('Skipping duplicate ', f)
         except Exception as e:
             raise
 
@@ -151,7 +151,7 @@ def insert_document(fname, fetch=True):
                 doc.update(newbibtex_p)
             else:
                 raise ValueError('Retrieved a non-matching bibtex. Correct and :Fetch', newbibtex)
-        except (urllib2.HTTPError, urllib2.URLError, AttributeError, AssertionError, ValueError) as e:
+        except (urllib.error.HTTPError, urllib.error.URLError, AttributeError, AssertionError, ValueError) as e:
             #pass # ref functions are quiet, fetch can silently fail with known errors
             print(e)
             print('bibtex fetch failed, continue with default bibtex')
@@ -216,7 +216,7 @@ def parse_bibtex(bibtex):
     d = collections.defaultdict(str)
     reg = r'^\s*(\w+)\s*=\s*{*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
-    for k, v in d.items():
+    for k, v in list(d.items()):
         d[k] = re.sub(r'[\'"{}\\=]', '', v)
     d['author'] = ', '.join(a.split(',')[0] for a in d['author'].split(' and '))
     if 'journal' not in d:
@@ -302,7 +302,7 @@ def title_heuristic_fontsize(xml):
 
     title = ''
     for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
-        title = ' '.join(map(lambda xs: xs[2], group)).strip()
+        title = ' '.join([xs[2] for xs in group]).strip()
         if 'arxiv' in title.lower():
             continue
         bad = ('abstract', 'introduction', 'relatedwork', 'originalpaper', 'bioinformatics')
@@ -371,7 +371,7 @@ def fetch_bibtex(title, arxivId):
 
 def fetch_bibtex_gscholar(title):
     # Raises urllib2 errors, ValueError
-    url = '/scholar?q=allintitle:' + urllib2.quote(title)
+    url = '/scholar?q=allintitle:' + urllib.parse.quote(title)
     return scholar_query(url)
 
 def fetch_bibtex_arxiv(arxivId, timeout=2.0):
@@ -407,14 +407,14 @@ def delay(n, interval):
 @delay(2, 1)
 def scholar_read(url, timeout=2.0):
     h         = {'User-Agent': cfg['User-Agent'], 'Cookie': cfg['Cookie']}
-    req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib2.urlopen(req, timeout=timeout).read().decode('utf8')).encode('utf8')
+    req = urllib.request.Request('http://scholar.google.com' + url, headers=h)
+    return unescape(urllib.request.urlopen(req, timeout=timeout).read().decode('utf8')).encode('utf8')
 
 def striptags(html):
     return unescape(re.sub(r'<[^>]+>', '', html))
 
 
-unescape = HTMLParser.HTMLParser().unescape
+unescape = html.parser.HTMLParser().unescape
 
 
 def export_bib(fname):
@@ -428,11 +428,11 @@ def init():
     try:
         with open(os.path.expanduser('~/.ref.conf')) as fh:
             cfgLoaded = json.loads(fh.read())
-        cfg = {k: cfgLoaded[k] if k in cfgLoaded else cfg[k] for k,v in cfg.items()}
+        cfg = {k: cfgLoaded[k] if k in cfgLoaded else cfg[k] for k,v in list(cfg.items())}
     except IOError as e:
         pass # config file not mandatory
     except ValueError as e:
-        print("~/.ref.conf contains an error: %s" % str(e))
+        print(("~/.ref.conf contains an error: %s" % str(e)))
 
     BASE_DIR = os.path.expanduser(cfg['base_dir'])
     DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
