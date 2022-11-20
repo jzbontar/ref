@@ -36,19 +36,17 @@ Set your base\_dir and google scholar Cookie in ~/.ref.conf, for example:
 ```
 {
 "base_dir"  : "~/Dropbox/ref",
-"Cookie"    : "<<Obtained from visiting google scholar with Live HTTP headers>>"
+"Cookie"    : "<<Obtained from request headers to google scholar, see below>>"
 }
 ```
 
 The database and pdf's will be saved in `base_dir`.
 Setting your `base_dir` to a dropbox folder will enable automatic syncing between your Dropbox-enabled computers.
 
-The Cookie you'll have to set manually after you added a few document and google scholar will
-start blocking the randomly generated cookies; you can skip this for now.
-
+Obtaining the cookie:
 * Go to scholar.google.com, search for something
 * On the search results, go to settings > Bibliography manager > Show links to import citations into BibTeX
-* Do another search on scholar.google.com and with Live HTTP headers capture the Cookie
+* In chrome, right click on page > Inspect > tab "Network" > click in list of html elements on page "scholar" > default tab "Headers" > section "Request Headers" > field "cookie"
 
 # Usage
 Type "ref" on the command line to see the main screen which is a vim session with two panes, split horizontally.
