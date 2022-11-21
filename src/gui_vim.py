@@ -30,7 +30,7 @@ import sqlite3
 import sys
 import vim
 import collections
-import urllib, urllib2
+import urllib.request, urllib.parse, urllib.error, urllib.request, urllib.error, urllib.parse
 
 import ref
 
@@ -46,7 +46,7 @@ def search_documents(query):
     last_select_cmd = lambda: search_documents(query)
     del main_buf[:]
     for field, docs in ref.search_documents(headers, query, order):
-        docs = map(str_document, docs)
+        docs = list(map(str_document, docs))
         if docs:
             heading = '# {}'.format(field.upper())
             if len(main_buf) == 1:
@@ -97,9 +97,11 @@ def get_docid(line):
 
 
 def str_document(doc):
-    return ('  '.join(
-        (str(doc[h] or '').decode('utf-8', 'replace')[:col_size[h]].ljust(col_size[h])
-         for h in headers))).encode('utf-8')
+    s = '  '.join(
+        str(doc[h] or '')[:col_size[h]].ljust(col_size[h])
+         for h in headers
+    )
+    return s
 
 
 def selected_document():
@@ -123,7 +125,7 @@ def resize():
 
 def update_main(docids=None):
     if not docids:
-        docids = filter(None, (get_docid(line) for line in main_buf))
+        docids = [_f for _f in (get_docid(line) for line in main_buf) if _f]
         if not docids:
             return
     cur = ref.select_documents(headers, docids)
@@ -150,8 +152,8 @@ def fetch_bibtex():
         # TODO also consider arXiv fetching here? This will always go to gscholar..
         # I probably want a new column in the dbase "eprint"= arXiv:XX | openreview:xxx
         # see https://arxiv.org/hypertex/bibstyles/
-    except (urllib2.HTTPError, urllib2.URLError, AttributeError) as e:
-        print 'Fetch failed: %s' % str(e)
+    except (urllib.error.HTTPError, urllib.error.URLError, AttributeError) as e:
+        print('Fetch failed: %s' % str(e))
         return
     doc.update(ref.parse_bibtex(doc['bibtex']))
     save_info(doc)
@@ -186,7 +188,7 @@ def add_arxiv(url_or_id):
     arxivId = ref.parse_arxiv(url_or_id, False, False) # can be just id, or filename, or html/pdf url.
     pdfUrl  = 'https://arxiv.org/pdf/{}.pdf'.format(arxivId)
     fname   ='ref.tmp.{}.pdf'.format(arxivId)
-    urllib.urlretrieve(pdfUrl, fname)
+    urllib.request.urlretrieve(pdfUrl, fname)
     add_document_del(fname)
 
 def export_bib(fname):
@@ -194,7 +196,7 @@ def export_bib(fname):
 
 def delete_document(lineFrom, lineTo):
     if vim.current.buffer != main_buf:
-        print 'Deletion is only possible from the main buffer'
+        print('Deletion is only possible from the main buffer')
         return
     docids = set()
     for line in main_buf[lineFrom - 1:lineTo]:
@@ -232,7 +234,7 @@ def order_documents(o):
 ref.init()
 
 order = 'docid DESC'
-headers = 'docid', 'rating', 'author', 'title', 'year'
+headers = ('docid', 'rating', 'author', 'title', 'year')
 tags = ref.get_tags()
 col_size = {}
 
@@ -253,31 +255,31 @@ resize()
 reload_main()
 #ref.check_filenames()
 
-c('autocmd CursorMoved main python write_info(selected_document())')
-c('autocmd BufLeave,VimLeave info python save_info(parse_info())')
-c('autocmd VimResized * python resize()')
+c('autocmd CursorMoved main python3 write_info(selected_document())')
+c('autocmd BufLeave,VimLeave info python3 save_info(parse_info())')
+c('autocmd VimResized * python3 resize()')
 c('set cursorline')
 c('set wildmode=longest,list')
 c('map q :qa!<CR>')
-c('map <c-o> :python open_document()<CR>')
-c('map <c-u> :python toggle_unread()<CR>')
+c('map <c-o> :python3 open_document()<CR>')
+c('map <c-u> :python3 toggle_unread()<CR>')
 c('map <c-w>o <NOP>')
 c('map // :Search ')
-c('com Fetch py fetch_bibtex()')
-c('com -nargs=1 -complete=customlist,Tag Tag py insert_tag("<args>")')
-c("com -nargs=? -complete=customlist,Tag Search py search_documents('''<args>''')")
-c('com -nargs=? -complete=customlist,Column Order py order_documents("<args>")')
-c('com -nargs=1 -complete=file Add py add_document("<args>")')
-c('com -nargs=1 -complete=file Addd py add_document_del("<args>")')
-c('com -nargs=1 -complete=file Addf py add_folder("<args>")')
-c('com -nargs=1 -complete=file Addfd py add_folder_del("<args>")')
-c('com -nargs=1 -complete=file Adda py add_arxiv("<args>")')
-c('com -nargs=1 -complete=file Export py export_bib("<args>")')
-c('com -range Delete py delete_document(<line1>, <line2>)')
+c('com Fetch py3 fetch_bibtex()')
+c('com -nargs=1 -complete=customlist,Tag Tag py3 insert_tag("<args>")')
+c("com -nargs=? -complete=customlist,Tag Search py3 search_documents('''<args>''')")
+c('com -nargs=? -complete=customlist,Column Order py3 order_documents("<args>")')
+c('com -nargs=1 -complete=file Add py3 add_document("<args>")')
+c('com -nargs=1 -complete=file Addd py3 add_document_del("<args>")')
+c('com -nargs=1 -complete=file Addf py3 add_folder("<args>")')
+c('com -nargs=1 -complete=file Addfd py3 add_folder_del("<args>")')
+c('com -nargs=1 -complete=file Adda py3 add_arxiv("<args>")')
+c('com -nargs=1 -complete=file Export py3 export_bib("<args>")')
+c('com -range Delete py3 delete_document(<line1>, <line2>)')
 c('set nonumber')
 
 c('''function Tag(ArgLead, CmdLine, CursorPos)
-    python c('let xs = {}'.format(list(tags)))
+    python3 c('let xs = {}'.format(list(tags)))
     return filter(xs, 'a:ArgLead == strpart(v:val, 0, strlen(a:ArgLead))')
 endfunction''')
 

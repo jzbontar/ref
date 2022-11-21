@@ -21,10 +21,10 @@
 # THE SOFTWARE.
 
 
-from subprocess import Popen, PIPE
+import subprocess
 import collections
 import filecmp
-import htmlentitydefs
+from html import unescape
 import itertools
 import os
 import random
@@ -35,8 +35,7 @@ import struct
 import sys
 import tempfile
 import time
-import urllib2
-import HTMLParser
+import urllib.request, urllib.error, urllib.parse
 import json
 
 
@@ -54,9 +53,9 @@ cfg = {
 }
 
 def import_folder(foldername, recurse=True, del_files=False):
-    print "Import folder {}".format(foldername)
+    print("Import folder {}".format(foldername))
     for f in sorted(os.listdir(foldername), key=os.path.getmtime):
-        print f
+        print(f)
         if os.path.isdir(os.path.join(foldername,f)):
             if recurse:
                 import_folder(os.path.join(foldername,f), recurse, del_files)
@@ -65,12 +64,12 @@ def import_folder(foldername, recurse=True, del_files=False):
             continue
         try:
             fname = os.path.join(foldername, f)
-            print fname
+            print(fname)
             insert_document(fname)
             if del_files:
                 os.remove(fname)
         except DuplicateError:
-            print 'Skipping duplicate ', f
+            print('Skipping duplicate ', f)
         except Exception as e:
             raise
 
@@ -151,7 +150,7 @@ def insert_document(fname, fetch=True):
                 doc.update(newbibtex_p)
             else:
                 raise ValueError('Retrieved a non-matching bibtex. Correct and :Fetch', newbibtex)
-        except (urllib2.HTTPError, urllib2.URLError, AttributeError, AssertionError, ValueError) as e:
+        except (urllib.error.HTTPError, urllib.error.URLError, AttributeError, AssertionError, ValueError) as e:
             #pass # ref functions are quiet, fetch can silently fail with known errors
             print(e)
             print('bibtex fetch failed, continue with default bibtex')
@@ -216,7 +215,7 @@ def parse_bibtex(bibtex):
     d = collections.defaultdict(str)
     reg = r'^\s*(\w+)\s*=\s*{*(.+?)}*,?$'
     d.update(dict(re.findall(reg, bibtex, re.MULTILINE)))
-    for k, v in d.items():
+    for k, v in list(d.items()):
         d[k] = re.sub(r'[\'"{}\\=]', '', v)
     d['author'] = ', '.join(a.split(',')[0] for a in d['author'].split(' and '))
     if 'journal' not in d:
@@ -232,7 +231,8 @@ def get_tags():
 
 
 def extract_djvu(fname):
-    fulltext = Popen(['djvutxt', fname], stdout=PIPE).communicate()[0]
+    cmd = ['djvutxt', fname]
+    fulltext = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
     title = re.match(r'(.*?)\n\n', fulltext, re.DOTALL).group(0)
     title = re.sub(r'\s+', ' ', title).strip()
     if len(title) > 100:
@@ -240,34 +240,18 @@ def extract_djvu(fname):
     return title, fulltext, None
 
 
-def extract_chm(fname):
-    dir = tempfile.mkdtemp(prefix='ref.')
-    Popen(['extract_chmLib', fname, dir], stdout=PIPE).communicate()
-    for base in os.listdir(dir):
-        name, ext = os.path.splitext(base)
-        if ext == '.hhc':
-            hhc = open(os.path.join(dir, base)).read()
-            title = re.search(r'name="Name" value="([^"]+)"', hhc).group(1)
-            fulltext = ''
-            for html in re.findall(r'"({}/[^"]+)"'.format(name), hhc):
-                fulltext += striptags(open(os.path.join(dir, html)).read())
-            break
-    shutil.rmtree(dir)
-    return title, fulltext, None
-
-
 def extract_pdf(fname):
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
-    fulltext = Popen(cmd, stdout=PIPE).communicate()[0]
+    fulltext = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
 
     cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '3', '-i', fname]
-    xml = Popen(cmd, stdout=PIPE).communicate()[0]
+    xml = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
 
     title, arxivId = extract_heuristic(fname, fulltext, xml)
     return title, fulltext, arxivId
 
 # MODULE GLOBAL DICT
-extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+extract_funs = {'.pdf': extract_pdf, '.djvu': extract_djvu}
 
 def parse_arxiv(s, prefix=True, version=True):
     pattern = (r'arXiv:' if prefix else '') + r'(\d{4}).(\d{5})' + (r'v(\d)' if version else '')
@@ -302,7 +286,7 @@ def title_heuristic_fontsize(xml):
 
     title = ''
     for _, group in sorted(groups, key=lambda xs: xs[0], reverse=True):
-        title = ' '.join(map(lambda xs: xs[2], group)).strip()
+        title = ' '.join([xs[2] for xs in group]).strip()
         if 'arxiv' in title.lower():
             continue
         bad = ('abstract', 'introduction', 'relatedwork', 'originalpaper', 'bioinformatics')
@@ -371,7 +355,7 @@ def fetch_bibtex(title, arxivId):
 
 def fetch_bibtex_gscholar(title):
     # Raises urllib2 errors, ValueError
-    url = '/scholar?q=allintitle:' + urllib2.quote(title)
+    url = '/scholar?q=allintitle:' + urllib.parse.quote(title)
     return scholar_query(url)
 
 def fetch_bibtex_arxiv(arxivId, timeout=2.0):
@@ -407,14 +391,11 @@ def delay(n, interval):
 @delay(2, 1)
 def scholar_read(url, timeout=2.0):
     h         = {'User-Agent': cfg['User-Agent'], 'Cookie': cfg['Cookie']}
-    req = urllib2.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib2.urlopen(req, timeout=timeout).read().decode('utf8')).encode('utf8')
+    req = urllib.request.Request('http://scholar.google.com' + url, headers=h)
+    return unescape(urllib.request.urlopen(req, timeout=timeout).read().decode('utf8'))
 
 def striptags(html):
     return unescape(re.sub(r'<[^>]+>', '', html))
-
-
-unescape = HTMLParser.HTMLParser().unescape
 
 
 def export_bib(fname):
@@ -422,19 +403,22 @@ def export_bib(fname):
     open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
 
 
-def init():
+def init(override_basedir=None):
     global cfg, con, BASE_DIR, DOCUMENT_DIR
 
     try:
         with open(os.path.expanduser('~/.ref.conf')) as fh:
             cfgLoaded = json.loads(fh.read())
-        cfg = {k: cfgLoaded[k] if k in cfgLoaded else cfg[k] for k,v in cfg.items()}
+        cfg = {k: cfgLoaded[k] if k in cfgLoaded else cfg[k] for k,v in list(cfg.items())}
     except IOError as e:
         pass # config file not mandatory
     except ValueError as e:
-        print("~/.ref.conf contains an error: %s" % str(e))
+        print(("~/.ref.conf contains an error: %s" % str(e)))
 
-    BASE_DIR = os.path.expanduser(cfg['base_dir'])
+    if override_basedir:
+        BASE_DIR = override_basedir
+    else:
+        BASE_DIR = os.path.expanduser(cfg['base_dir'])
     DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
 
     for dir in (BASE_DIR, DOCUMENT_DIR):
@@ -447,3 +431,11 @@ def init():
     con.text_factory = str
     con.execute("ATTACH '{}' as fulltext".format(os.path.join(BASE_DIR, 'fulltext.sqlite3')))
     create_tables()
+
+
+def main():
+    init()
+    print(scholar_query('/scholar?q=source:2206.14486'))
+
+if __name__ == "__main__":
+    main()

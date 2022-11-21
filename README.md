@@ -6,21 +6,21 @@ Ref is released under the terms of the MIT license.
 # Installation
 ## Preferred: Installation in dedicated conda environment
 ```
-conda create -n ref python=2
+conda create -n ref
 conda activate ref
 conda install poppler vim ncurses -c conda-forge
-git clone git@github.com:jzbontar/ref ref-for-conda
-cd ref-for-conda/
+git clone git@github.com:jzbontar/ref ref
+cd ref
 python setup.py develop
 ```
 
 Replace the last line with `python setup.py install` if you don't want to change ref.
 
 ## Prerequesites (manual)
-You'll need a recent vim, compiled with python 2.7 support.
+You'll need a recent vim, compiled with python support.
 
 On ubuntu the ones in `apt-get` will do,
-on Mac OS X use `brew install python` and `brew install vim`.
+on Mac OS X use `brew install vim` which has python3 bindings.
 On Mac OS X you'll also need poppler for the pdftotext command line tool: `brew install poppler`
 
 ## Installation (manual)
@@ -36,19 +36,17 @@ Set your base\_dir and google scholar Cookie in ~/.ref.conf, for example:
 ```
 {
 "base_dir"  : "~/Dropbox/ref",
-"Cookie"    : "<<Obtained from visiting google scholar with Live HTTP headers>>"
+"Cookie"    : "<<Obtained from request headers to google scholar, see below>>"
 }
 ```
 
-Setting your base\_dir to a dropbox folder will enable automatic syncing between your Dropbox-enabled computers.
-The database and pdf's will be saved in the base\_dir.
+The database and pdf's will be saved in `base_dir`.
+Setting your `base_dir` to a dropbox folder will enable automatic syncing between your Dropbox-enabled computers.
 
-The Cookie you'll have to set manually after you added a few document and google scholar will
-start blocking the randomly generated cookies; you can skip this for now.
-
+Obtaining the cookie:
 * Go to scholar.google.com, search for something
 * On the search results, go to settings > Bibliography manager > Show links to import citations into BibTeX
-* Do another search on scholar.google.com and with Live HTTP headers capture the Cookie
+* In chrome, right click on page > Inspect > tab "Network" > click in list of html elements on page "scholar" > default tab "Headers" > section "Request Headers" > field "cookie"
 
 # Usage
 Type "ref" on the command line to see the main screen which is a vim session with two panes, split horizontally.
