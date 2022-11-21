@@ -21,10 +21,10 @@
 # THE SOFTWARE.
 
 
-from subprocess import Popen, PIPE
+import subprocess
 import collections
 import filecmp
-import html.entities
+from html import unescape
 import itertools
 import os
 import random
@@ -36,7 +36,6 @@ import sys
 import tempfile
 import time
 import urllib.request, urllib.error, urllib.parse
-import html.parser
 import json
 
 
@@ -232,7 +231,8 @@ def get_tags():
 
 
 def extract_djvu(fname):
-    fulltext = Popen(['djvutxt', fname], stdout=PIPE).communicate()[0]
+    cmd = ['djvutxt', fname]
+    fulltext = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
     title = re.match(r'(.*?)\n\n', fulltext, re.DOTALL).group(0)
     title = re.sub(r'\s+', ' ', title).strip()
     if len(title) > 100:
@@ -240,34 +240,18 @@ def extract_djvu(fname):
     return title, fulltext, None
 
 
-def extract_chm(fname):
-    dir = tempfile.mkdtemp(prefix='ref.')
-    Popen(['extract_chmLib', fname, dir], stdout=PIPE).communicate()
-    for base in os.listdir(dir):
-        name, ext = os.path.splitext(base)
-        if ext == '.hhc':
-            hhc = open(os.path.join(dir, base)).read()
-            title = re.search(r'name="Name" value="([^"]+)"', hhc).group(1)
-            fulltext = ''
-            for html in re.findall(r'"({}/[^"]+)"'.format(name), hhc):
-                fulltext += striptags(open(os.path.join(dir, html)).read())
-            break
-    shutil.rmtree(dir)
-    return title, fulltext, None
-
-
 def extract_pdf(fname):
     cmd = ['pdftotext', '-enc', 'ASCII7', fname, '-']
-    fulltext = Popen(cmd, stdout=PIPE).communicate()[0]
+    fulltext = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
 
     cmd = ['pdftohtml', '-enc', 'ASCII7', '-xml', '-stdout', '-l', '3', '-i', fname]
-    xml = Popen(cmd, stdout=PIPE).communicate()[0]
+    xml = subprocess.run(cmd, check=True, capture_output=True, text=True).stdout
 
     title, arxivId = extract_heuristic(fname, fulltext, xml)
     return title, fulltext, arxivId
 
 # MODULE GLOBAL DICT
-extract_funs = {'.pdf': extract_pdf, '.chm': extract_chm, '.djvu': extract_djvu}
+extract_funs = {'.pdf': extract_pdf, '.djvu': extract_djvu}
 
 def parse_arxiv(s, prefix=True, version=True):
     pattern = (r'arXiv:' if prefix else '') + r'(\d{4}).(\d{5})' + (r'v(\d)' if version else '')
@@ -408,13 +392,10 @@ def delay(n, interval):
 def scholar_read(url, timeout=2.0):
     h         = {'User-Agent': cfg['User-Agent'], 'Cookie': cfg['Cookie']}
     req = urllib.request.Request('http://scholar.google.com' + url, headers=h)
-    return unescape(urllib.request.urlopen(req, timeout=timeout).read().decode('utf8')).encode('utf8')
+    return unescape(urllib.request.urlopen(req, timeout=timeout).read().decode('utf8'))
 
 def striptags(html):
     return unescape(re.sub(r'<[^>]+>', '', html))
-
-
-unescape = html.parser.HTMLParser().unescape
 
 
 def export_bib(fname):
@@ -422,7 +403,7 @@ def export_bib(fname):
     open(fname, 'w').write('\n\n'.join(row['bibtex'] for row in rows))
 
 
-def init():
+def init(override_basedir=None):
     global cfg, con, BASE_DIR, DOCUMENT_DIR
 
     try:
@@ -434,7 +415,10 @@ def init():
     except ValueError as e:
         print(("~/.ref.conf contains an error: %s" % str(e)))
 
-    BASE_DIR = os.path.expanduser(cfg['base_dir'])
+    if override_basedir:
+        BASE_DIR = override_basedir
+    else:
+        BASE_DIR = os.path.expanduser(cfg['base_dir'])
     DOCUMENT_DIR = os.path.join(BASE_DIR, 'documents')
 
     for dir in (BASE_DIR, DOCUMENT_DIR):
@@ -447,3 +431,11 @@ def init():
     con.text_factory = str
     con.execute("ATTACH '{}' as fulltext".format(os.path.join(BASE_DIR, 'fulltext.sqlite3')))
     create_tables()
+
+
+def main():
+    init()
+    print(scholar_query('/scholar?q=source:2206.14486'))
+
+if __name__ == "__main__":
+    main()

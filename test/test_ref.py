@@ -158,10 +158,10 @@ class Test(unittest.TestCase):
         self.assertEqual(self.ref_status(), (3, 2, 2))
 
     def test_insert_document_transaction2(self):
-        os.chmod(ref.DOCUMENT_DIR, 0555)
+        os.chmod(ref.DOCUMENT_DIR, 0o0555)
         with self.assertRaises(IOError):
             ref.insert_document('data/kdd08koren.pdf', False)
-        os.chmod(ref.DOCUMENT_DIR, 0755)
+        os.chmod(ref.DOCUMENT_DIR, 0o0755)
         self.assertEqual(self.ref_status(), (2, 2, 2))
 
     def test_delete(self):
@@ -171,11 +171,11 @@ class Test(unittest.TestCase):
         self.assertEqual(self.ref_status(), (1, 1, 1))
 
     def test_delete_transaction1(self):
-        os.chmod(ref.DOCUMENT_DIR, 0555)
+        os.chmod(ref.DOCUMENT_DIR, 0o0555)
         with self.assertRaises(OSError):
             ref.delete_document(2)
         self.assertEqual(self.ref_status(), (2, 2, 2))
-        os.chmod(ref.DOCUMENT_DIR, 0755)
+        os.chmod(ref.DOCUMENT_DIR, 0o0755)
 
     def test_search_documents(self):
         search = lambda q: {k: [row['docid'] for row in rows] for k, rows in ref.search_documents(['docid'], q)}
@@ -225,7 +225,7 @@ class Test(unittest.TestCase):
         self.assertSetEqual(ref.get_tags(), {'tag1', 'tag2', 'space tag'})
 
     def test_extract_pdf(self):
-        title, fulltext = ref.extract_pdf('data/kdd08koren.pdf')
+        title, fulltext, arxivId = ref.extract_pdf('data/kdd08koren.pdf')
         self.assertEqual(title, 'Factorization Meets the Neighborhood: a Multifaceted Collaborative Filtering Model')
         self.assertEqual(fulltext, open('data/kdd08koren.txt').read())
 
